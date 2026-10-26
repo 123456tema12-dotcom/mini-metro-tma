@@ -1,0 +1,158 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+  <title>Mini Metro - Telegram Mini App</title>
+
+  <!-- Telegram WebApp Script -->
+  <script src="https://telegram.org/js/telegram-web-app.js"></script>
+
+  <!-- App Stylesheet -->
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+  <div id="game-container">
+    <!-- Main High-DPI Canvas -->
+    <canvas id="game-canvas"></canvas>
+
+    <!-- Top HUD Navigation -->
+    <header class="hud-top">
+      <div class="hud-group">
+        <!-- City Select Button -->
+        <div class="hud-pill" style="cursor: pointer;" title="Change City">
+          <span id="city-name">LONDON</span>
+          <span style="font-size: 10px; opacity: 0.6;">▼</span>
+        </div>
+
+        <!-- Passenger Score -->
+        <div class="hud-pill score-pill">
+          <span class="score-icon">👥</span>
+          <span id="score-value">0</span>
+        </div>
+      </div>
+
+      <!-- Clock & Speed Controls -->
+      <div class="hud-group">
+        <div class="hud-pill clock-display">
+          <span class="clock-circle">
+            <span class="clock-hand" id="clock-hand"></span>
+          </span>
+          <span class="clock-day" id="clock-day">MON 08:00</span>
+        </div>
+
+        <div class="speed-group">
+          <button class="speed-btn" id="btn-pause" title="Pause">❚❚</button>
+          <button class="speed-btn active" id="btn-1x" title="Normal Speed">▶</button>
+          <button class="speed-btn" id="btn-2x" title="Fast Forward">▶▶</button>
+        </div>
+
+        <!-- Utility buttons -->
+        <button class="hud-btn" id="btn-sound" title="Toggle Sound">🔊</button>
+        <button class="hud-btn" id="btn-theme" title="Toggle Theme">☀️</button>
+        <button class="hud-btn" id="btn-center" title="Center View">🎯</button>
+        <button class="hud-btn" id="btn-help" title="How to Play">❓</button>
+      </div>
+    </header>
+
+    <!-- Instructions Overlay -->
+    <div class="instructions-overlay" id="instructions-tip">
+      💡 Drag from a station to draw a metro line. Pinch to zoom!
+    </div>
+
+    <!-- Bottom Inventory Bar -->
+    <footer class="hud-bottom">
+      <div class="inventory-panel">
+        <div class="inventory-item">
+          <span>🚇 Lines:</span>
+          <div class="line-tokens-container" id="line-tokens"></div>
+        </div>
+
+        <div class="inventory-item" id="bridges-count" title="Available Tunnels/Bridges">
+          🌉 1
+        </div>
+
+        <div class="inventory-item" id="trains-count" title="Total Trains">
+          🚂 3
+        </div>
+
+        <button class="delete-line-btn" id="btn-clear-lines" title="Delete a line">✕ Line</button>
+      </div>
+    </footer>
+
+    <!-- Weekly Upgrade Modal -->
+    <div class="modal-backdrop" id="weekly-modal">
+      <div class="modal-card">
+        <div class="modal-title" id="weekly-title">Week 1 Complete!</div>
+        <div class="modal-subtitle" id="weekly-subtitle">Choose your reward to expand the network:</div>
+
+        <div class="upgrade-auto-badge">
+          🚂 Awarded: <strong>+1 Locomotive</strong>
+        </div>
+
+        <div class="upgrade-choices-grid" id="upgrade-grid">
+          <!-- Dynamic Upgrade Choice Cards populated via JS -->
+        </div>
+      </div>
+    </div>
+
+    <!-- Game Over Modal -->
+    <div class="modal-backdrop" id="game-over-modal">
+      <div class="modal-card">
+        <div class="modal-title" style="color: var(--danger-color);">Network Overcrowded!</div>
+        <div class="modal-subtitle">A station was over capacity for too long and the network closed.</div>
+
+        <div class="game-over-stats">
+          <div class="stat-item">
+            <span class="stat-value" id="final-score">0</span>
+            <span class="stat-label">Passengers</span>
+          </div>
+          <div class="stat-item">
+            <span class="stat-value" id="final-days">0</span>
+            <span class="stat-label">Days Survived</span>
+          </div>
+        </div>
+
+        <button class="btn-primary" id="btn-restart">Play Again</button>
+        <button class="btn-secondary" id="btn-share">Share Result on Telegram</button>
+      </div>
+    </div>
+
+    <!-- City Select Modal -->
+    <div class="modal-backdrop" id="city-modal">
+      <div class="modal-card">
+        <div class="modal-title">Select Metro City</div>
+        <div class="modal-subtitle">Choose a transit network with unique geography:</div>
+
+        <div class="city-select-grid" id="city-grid">
+          <!-- Cities populated via JS -->
+        </div>
+
+        <button class="btn-secondary" id="btn-close-city">Close</button>
+      </div>
+    </div>
+
+    <!-- Help / Guide Modal -->
+    <div class="modal-backdrop" id="help-modal">
+      <div class="modal-card" style="text-align: left;">
+        <div class="modal-title" style="text-align: center;">How to Play</div>
+        <div class="modal-subtitle" style="text-align: center;">Master the art of subway network planning</div>
+
+        <div style="font-size: 13px; line-height: 1.6; display: flex; flex-direction: column; gap: 10px; margin-bottom: 16px;">
+          <p><strong>1. Draw Lines:</strong> Touch and drag from any station to another station to lay tracks.</p>
+          <p><strong>2. Extend & Loop:</strong> Drag the circle handle at the end of a line to connect more stations, or back to the start to form a loop!</p>
+          <p><strong>3. Insert Stations:</strong> Drag any line segment between two stations onto a third station to route trains through it.</p>
+          <p><strong>4. Watch Overcrowding:</strong> Stations hold up to 6 passengers. If a station exceeds capacity, a warning timer starts ticking!</p>
+          <p><strong>5. Sunday Upgrades:</strong> Survive until Sunday night to receive new trains, lines, tunnels, and interchanges.</p>
+          <p><strong>6. Mobile Navigation:</strong> Use two fingers to pinch-to-zoom and pan across the city map.</p>
+        </div>
+
+        <button class="btn-primary" id="btn-close-help">Got it!</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Main ES Module Script -->
+  <script type="module" src="js/main.js"></script>
+</body>
+</html>
