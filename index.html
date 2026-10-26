@@ -57,7 +57,7 @@
 
     <!-- Instructions Overlay -->
     <div class="instructions-overlay" id="instructions-tip">
-      💡 Drag from a station to draw a metro line. Pinch to zoom!
+      💡 Drag from a station to draw a metro line. Drag end to extend or reverse to shorten!
     </div>
 
     <!-- Bottom Inventory Bar -->
@@ -74,6 +74,14 @@
 
         <div class="inventory-item" id="trains-count" title="Total Trains">
           🚂 3
+        </div>
+
+        <div class="inventory-item" id="carriages-count" style="display: none;" title="Available Carriages">
+          🚃 0
+        </div>
+
+        <div class="inventory-item" id="interchanges-count" style="display: none;" title="Available Interchanges">
+          🏢 0
         </div>
 
         <button class="delete-line-btn" id="btn-clear-lines" title="Delete a line">✕ Line</button>
@@ -99,8 +107,8 @@
     <!-- Game Over Modal -->
     <div class="modal-backdrop" id="game-over-modal">
       <div class="modal-card">
-        <div class="modal-title" style="color: var(--danger-color);">Network Overcrowded!</div>
-        <div class="modal-subtitle">A station was over capacity for too long and the network closed.</div>
+        <div class="modal-title" style="color: var(--danger-color);">Station Overcrowded!</div>
+        <div class="modal-subtitle">A station exceeded capacity for too long in <span id="final-city" style="font-weight: 700;">London</span> and the network shut down.</div>
 
         <div class="game-over-stats">
           <div class="stat-item">
@@ -140,11 +148,12 @@
 
         <div style="font-size: 13px; line-height: 1.6; display: flex; flex-direction: column; gap: 10px; margin-bottom: 16px;">
           <p><strong>1. Draw Lines:</strong> Touch and drag from any station to another station to lay tracks.</p>
-          <p><strong>2. Extend & Loop:</strong> Drag the circle handle at the end of a line to connect more stations, or back to the start to form a loop!</p>
-          <p><strong>3. Insert Stations:</strong> Drag any line segment between two stations onto a third station to route trains through it.</p>
-          <p><strong>4. Watch Overcrowding:</strong> Stations hold up to 6 passengers. If a station exceeds capacity, a warning timer starts ticking!</p>
-          <p><strong>5. Sunday Upgrades:</strong> Survive until Sunday night to receive new trains, lines, tunnels, and interchanges.</p>
-          <p><strong>6. Mobile Navigation:</strong> Use two fingers to pinch-to-zoom and pan across the city map.</p>
+          <p><strong>2. Extend & Loop:</strong> Drag the circle handle at the end of a line to connect more stations, or drag back to the starting station to form a continuous loop!</p>
+          <p><strong>3. Retract Lines:</strong> Drag the end handle backwards over the previous station to remove that station from the line.</p>
+          <p><strong>4. Insert Stations:</strong> Drag any line segment between two stations onto a third station to route trains through it.</p>
+          <p><strong>5. Watch Overcrowding:</strong> Stations hold up to 6 passengers (or 18 for Interchanges). If a station exceeds capacity, a warning timer starts ticking!</p>
+          <p><strong>6. Sunday Upgrades:</strong> Survive until Sunday night to receive new trains, lines, tunnels, and interchanges.</p>
+          <p><strong>7. Mobile Navigation:</strong> Use two fingers to pinch-to-zoom and pan across the city map.</p>
         </div>
 
         <button class="btn-primary" id="btn-close-help">Got it!</button>

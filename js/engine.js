@@ -1,6 +1,7 @@
 /* ==========================================================================
    MINI METRO - Core Simulation Engine
-   Time, station spawns, passenger flows, train movements, overcrowding & weekly upgrades
+   Time, station spawns, passenger flows, train movements, loop lines,
+   overcrowding countdown, and weekly upgrades
    ========================================================================== */
 
 import { Geometry } from './geometry.js';
@@ -20,14 +21,14 @@ export class GameEngine {
     this.isGameOver = false;
 
     // Clock
-    this.simTime = 0; // Total seconds of simulation
-    this.dayLength = 48.0; // Real-world seconds per game day
-    this.dayOfWeek = 0; // 0 = Mon, 1 = Tue, ..., 6 = Sun
-    this.hour = 0; // 0..23
-    this.lastHour = 0;
+    this.simTime = 0;
+    this.dayLength = 45.0; // seconds per game day
+    this.dayOfWeek = 0; // 0 = Mon .. 6 = Sun
+    this.hour = 8; // start at 8:00 AM
+    this.lastHour = 8;
     this.week = 1;
 
-    // Scoring & Stats
+    // Score & Stats
     this.score = 0;
     this.totalPassengersDelivered = 0;
     this.daysSurvived = 0;
@@ -40,7 +41,6 @@ export class GameEngine {
     this.nextTrainId = 1;
 
     // Inventory & Assets
-    this.availableLines = this.level.initialLines;
     this.maxLines = this.level.maxLines || 7;
     this.availableLocomotives = 0; // extra unassigned
     this.availableCarriages = this.level.initialCarriages || 0;
@@ -52,7 +52,6 @@ export class GameEngine {
     this.stationSpawnInterval = this.level.spawnCooldown || 14.0;
     this.peepSpawnTimer = 0;
 
-    // Active overcapacity warning state
     this.worstOvercrowdStation = null;
     this.lastWarningAudioTime = 0;
 
@@ -70,7 +69,7 @@ export class GameEngine {
       this.addStation(s.x, s.y, s.type);
     });
 
-    // Create line color instances
+    // Create line slots
     for (let i = 0; i < this.level.initialLines; i++) {
       this.createLine();
     }
@@ -83,8 +82,8 @@ export class GameEngine {
       id: `line_${this.nextLineId++}`,
       index: this.lines.length,
       color: this.level.theme.lineColors[colorIdx],
-      stations: [], // ordered list of Station references
-      trains: [],   // list of Train instances
+      stations: [],
+      trains: [],
       isLoop: false
     };
 
@@ -106,12 +105,12 @@ export class GameEngine {
       peeps: [],
       currentStationIndex: 0,
       nextStationIndex: 1,
-      direction: 1, // +1 moving forward, -1 moving backward
-      progress: 0.0, // 0..1 between current and next station
-      speed: (this.level.trainSpeedMultiplier || 1.0) * 0.35, // progress fraction per second
+      direction: 1,
+      progress: 0.0,
+      speed: (this.level.trainSpeedMultiplier || 1.0) * 0.38,
       atStation: false,
       dwellTimer: 0.0,
-      dwellDuration: 0.8
+      dwellDuration: 0.75
     };
   }
 
@@ -120,20 +119,19 @@ export class GameEngine {
       id: `st_${this.nextStationId++}`,
       x: x,
       y: y,
-      type: type, // 'circle', 'triangle', 'square', 'star', 'diamond', 'pentagon', 'cross'
+      type: type,
       isInterchange: false,
       capacity: 6,
       peeps: [],
-      overcrowdTimer: 0.0, // 0..1
-      isOvercrowded: false,
-      pulseAnim: 0.0
+      overcrowdTimer: 0.0,
+      isOvercrowded: false
     };
     this.stations.push(station);
     if (this.audio) this.audio.playPeepSpawn(type);
     return station;
   }
 
-  // Count how many bridges/tunnels are currently used by all lines
+  // Count bridges used by all tracks
   getUsedBridgesCount() {
     let count = 0;
     if (!this.level.rivers) return 0;
@@ -176,16 +174,14 @@ export class GameEngine {
     if (this.stationSpawnTimer >= this.stationSpawnInterval) {
       this.stationSpawnTimer = 0;
       this.spawnNewStation();
-      // Slightly decrease interval as time goes on, down to 8s
-      this.stationSpawnInterval = Math.max(8.0, this.stationSpawnInterval * 0.98);
+      this.stationSpawnInterval = Math.max(7.5, this.stationSpawnInterval * 0.98);
     }
 
     // 2. Peep Spawner
     this.peepSpawnTimer += dt;
-    const baseInterval = 3.6 / (this.level.peepSpawnRate || 1.0);
-    // Acceleration over weeks
-    const tension = 1.0 + (this.week - 1) * 0.15;
-    const peepInterval = Math.max(1.0, baseInterval / tension);
+    const baseInterval = 3.4 / (this.level.peepSpawnRate || 1.0);
+    const tension = 1.0 + (this.week - 1) * 0.16;
+    const peepInterval = Math.max(0.9, baseInterval / tension);
 
     if (this.peepSpawnTimer >= peepInterval) {
       this.peepSpawnTimer = 0;
@@ -194,19 +190,17 @@ export class GameEngine {
   }
 
   spawnNewStation() {
-    // Generate position in expanding circle
-    const maxRadius = Math.min(380, 160 + this.stations.length * 14);
-    const minSeparation = 75; // minimum distance between any 2 stations
+    const maxRadius = Math.min(380, 160 + this.stations.length * 15);
+    const minSeparation = 78;
 
     let attempts = 0;
-    while (attempts < 50) {
+    while (attempts < 60) {
       attempts++;
       const angle = Math.random() * Math.PI * 2;
       const r = 60 + Math.random() * (maxRadius - 60);
       const x = Math.round(Math.cos(angle) * r);
       const y = Math.round(Math.sin(angle) * r);
 
-      // Check distance from all existing stations
       let tooClose = false;
       for (const s of this.stations) {
         if (Geometry.dist({ x, y }, s) < minSeparation) {
@@ -216,7 +210,6 @@ export class GameEngine {
       }
       if (tooClose) continue;
 
-      // Choose shape type
       const shape = this.chooseNewStationShape();
       this.addStation(x, y, shape);
       break;
@@ -224,7 +217,6 @@ export class GameEngine {
   }
 
   chooseNewStationShape() {
-    // Shape distribution: Circles (~55%), Triangles (~30%), Squares (~12%), Rare (~3%)
     const counts = { circle: 0, triangle: 0, square: 0, rare: 0 };
     this.stations.forEach(s => {
       if (counts[s.type] !== undefined) counts[s.type]++;
@@ -236,10 +228,8 @@ export class GameEngine {
     if (rand < 0.85 && counts.triangle < 8) return 'triangle';
     if (rand < 0.96 && counts.square < 5) return 'square';
 
-    // Rare shapes appear starting week 2 or when map has > 8 stations
-    if (this.week >= 2 || this.stations.length > 8) {
+    if (this.week >= 2 || this.stations.length > 7) {
       const rareShapes = ['star', 'diamond', 'pentagon', 'cross'];
-      // Pick a rare shape not currently on map
       const existingRares = new Set(this.stations.map(s => s.type));
       for (const r of rareShapes) {
         if (!existingRares.has(r)) return r;
@@ -251,21 +241,17 @@ export class GameEngine {
 
   spawnRandomPeep() {
     if (this.stations.length < 2) return;
-    // Pick random station with space
-    const eligibleStations = this.stations.filter(s => s.peeps.length < 12);
+    const eligibleStations = this.stations.filter(s => s.peeps.length < (s.isInterchange ? 24 : 12));
     if (eligibleStations.length === 0) return;
 
     const sourceStation = eligibleStations[Math.floor(Math.random() * eligibleStations.length)];
 
-    // Target shape MUST be different from source station's shape
-    // Collect all other shapes present in the city
     const availableShapes = Array.from(new Set(
       this.stations.map(s => s.type).filter(t => t !== sourceStation.type)
     ));
     if (availableShapes.length === 0) return;
 
-    // Weight squares and rare shapes higher if they exist
-    let targetShape = availableShapes[Math.floor(Math.random() * availableShapes.length)];
+    const targetShape = availableShapes[Math.floor(Math.random() * availableShapes.length)];
 
     const peep = {
       id: `peep_${Date.now()}_${Math.random()}`,
@@ -278,7 +264,7 @@ export class GameEngine {
     if (this.audio) this.audio.playPeepSpawn(targetShape);
   }
 
-  // Update clock & time
+  // Update Clock
   updateClock(dt) {
     this.simTime += dt;
     const dayProgress = (this.simTime % this.dayLength) / this.dayLength;
@@ -292,12 +278,11 @@ export class GameEngine {
     const currentTotalDays = Math.floor(this.simTime / this.dayLength);
     const newDayOfWeek = currentTotalDays % 7;
 
-    // Check if new day
     if (currentTotalDays > this.daysSurvived) {
       this.daysSurvived = currentTotalDays;
     }
 
-    // Check if week ended (Sunday 23:59 -> Monday 00:00)
+    // Week Transition (Sunday 23:59 -> Monday 00:00)
     if (this.dayOfWeek === 6 && newDayOfWeek === 0) {
       this.dayOfWeek = newDayOfWeek;
       this.week++;
@@ -311,10 +296,9 @@ export class GameEngine {
     this.isPaused = true;
     if (this.audio) this.audio.playWeeklyReward();
 
-    // Standard weekly award: +1 Locomotive
+    // Standard Award: +1 Locomotive
     this.availableLocomotives++;
 
-    // Generate 2 bonus options for player to choose
     const choices = [];
     if (this.lines.length < this.maxLines) {
       choices.push({ id: 'line', name: 'New Metro Line', desc: '+1 new transit line', icon: '🚇' });
@@ -323,7 +307,6 @@ export class GameEngine {
     choices.push({ id: 'bridge', name: '2 Tunnels / Bridges', desc: 'Cross rivers and bays', icon: '🌉' });
     choices.push({ id: 'interchange', name: 'Interchange Station', desc: 'Boost station capacity to 18', icon: '🏢' });
 
-    // Pick 2 random distinct choices
     const shuffled = choices.sort(() => 0.5 - Math.random());
     const offer = [shuffled[0], shuffled[1]];
 
@@ -337,7 +320,7 @@ export class GameEngine {
       this.createLine();
     } else if (choiceId === 'carriage') {
       this.availableCarriages++;
-      // Auto-attach carriage to first train with no carriage if possible
+      // Auto attach carriage to train with no carriage if possible
       for (const line of this.lines) {
         for (const train of line.trains) {
           if (train.carriages === 0 && this.availableCarriages > 0) {
@@ -356,7 +339,7 @@ export class GameEngine {
     this.isPaused = false;
   }
 
-  // Update train positions and passenger embark/disembark
+  // Update trains along lines
   updateTrains(dt) {
     this.lines.forEach(line => {
       if (line.stations.length < 2) return;
@@ -371,11 +354,9 @@ export class GameEngine {
           return;
         }
 
-        // Move train along segment
         train.progress += train.speed * dt;
         if (train.progress >= 1.0) {
           train.progress = 0.0;
-          // Arrived at next station!
           this.handleTrainArrival(train, line);
         }
       });
@@ -399,13 +380,11 @@ export class GameEngine {
 
       if (decision.disembark) {
         if (decision.isDestination) {
-          // Reached destination! Score!
           this.score++;
           this.totalPassengersDelivered++;
           if (this.onScoreChange) this.onScoreChange(this.score);
           if (this.audio) this.audio.playPeepDeliver();
         } else {
-          // Transfer to this station
           station.peeps.push(peep);
           if (this.audio) this.audio.playPeepBoard();
         }
@@ -415,7 +394,7 @@ export class GameEngine {
     }
     train.peeps = remainingPeeps;
 
-    // 2. Embarking from station
+    // 2. Embarking
     const remainingStationPeeps = [];
     for (const peep of station.peeps) {
       if (train.peeps.length < train.capacity) {
@@ -432,10 +411,11 @@ export class GameEngine {
     }
     station.peeps = remainingStationPeeps;
 
-    // 3. Plan next station
+    // 3. Next Station
     const numStations = line.stations.length;
     if (line.isLoop && numStations >= 3) {
-      train.nextStationIndex = (train.currentStationIndex + train.direction + numStations) % numStations;
+      // Loop Line: Continuous circulation
+      train.nextStationIndex = (train.currentStationIndex + 1) % numStations;
     } else {
       let nextIdx = train.currentStationIndex + train.direction;
       if (nextIdx >= numStations) {
@@ -449,7 +429,7 @@ export class GameEngine {
     }
   }
 
-  // Check station capacity and overcrowding
+  // Station Overcrowding
   updateOvercrowding(dt) {
     let worstStation = null;
     let maxOvercrowd = 0;
@@ -460,7 +440,6 @@ export class GameEngine {
 
       if (station.peeps.length > cap) {
         station.isOvercrowded = true;
-        // Overcrowd timer fills over 18 seconds
         station.overcrowdTimer += dt / 18.0;
 
         if (station.overcrowdTimer > maxOvercrowd) {
@@ -468,12 +447,10 @@ export class GameEngine {
           worstStation = station;
         }
 
-        // Game Over condition!
         if (station.overcrowdTimer >= 1.0) {
           this.triggerGameOver(station);
         }
       } else {
-        // Cooldown when below capacity
         if (station.overcrowdTimer > 0) {
           station.overcrowdTimer = Math.max(0, station.overcrowdTimer - dt / 8.0);
           if (station.overcrowdTimer === 0) {
@@ -485,10 +462,9 @@ export class GameEngine {
 
     this.worstOvercrowdStation = worstStation;
 
-    // Periodic warning sound if any station is critically overcrowded (> 60%)
-    if (maxOvercrowd > 0.6) {
+    if (maxOvercrowd > 0.65) {
       const now = Date.now();
-      if (now - this.lastWarningAudioTime > 2500) {
+      if (now - this.lastWarningAudioTime > 2200) {
         this.lastWarningAudioTime = now;
         if (this.audio) this.audio.playOvercrowdWarning();
       }
@@ -509,7 +485,6 @@ export class GameEngine {
     }
   }
 
-  // Main tick
   update(rawDt) {
     if (this.isPaused || this.isGameOver) return;
     const dt = Math.min(0.1, rawDt) * this.timeScale;

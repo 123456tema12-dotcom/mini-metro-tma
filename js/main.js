@@ -18,7 +18,7 @@ class App {
     this.tg = new TelegramBridge();
     this.currentLevelId = 'london';
 
-    // UI elements
+    // HUD UI elements
     this.cityNameEl = document.getElementById('city-name');
     this.clockDayEl = document.getElementById('clock-day');
     this.clockHandEl = document.getElementById('clock-hand');
@@ -26,6 +26,8 @@ class App {
     this.lineTokensEl = document.getElementById('line-tokens');
     this.bridgesCountEl = document.getElementById('bridges-count');
     this.trainsCountEl = document.getElementById('trains-count');
+    this.carriagesCountEl = document.getElementById('carriages-count');
+    this.interchangesCountEl = document.getElementById('interchanges-count');
 
     // Modals
     this.weeklyModal = document.getElementById('weekly-modal');
@@ -36,13 +38,12 @@ class App {
     this.gameOverModal = document.getElementById('game-over-modal');
     this.finalScoreEl = document.getElementById('final-score');
     this.finalDaysEl = document.getElementById('final-days');
+    this.finalCityEl = document.getElementById('final-city');
 
     this.cityModal = document.getElementById('city-modal');
     this.cityGridEl = document.getElementById('city-grid');
-
     this.helpModal = document.getElementById('help-modal');
 
-    // Day names
     this.daysOfWeek = ['MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT', 'SUN'];
 
     this.initGame();
@@ -54,7 +55,6 @@ class App {
     const levelDef = Levels[this.currentLevelId] || Levels.london;
     this.cityNameEl.textContent = levelDef.name.toUpperCase();
 
-    // Setup Engine & Renderer
     this.renderer = new Renderer(this.canvas);
     this.renderer.isNightMode = this.tg.getThemeMode() === 'dark';
     if (this.renderer.isNightMode) {
@@ -76,7 +76,7 @@ class App {
   }
 
   initUIControls() {
-    // Speed buttons
+    // Speed Controls (Pause, 1x, 2x)
     const btnPause = document.getElementById('btn-pause');
     const btn1x = document.getElementById('btn-1x');
     const btn2x = document.getElementById('btn-2x');
@@ -94,7 +94,7 @@ class App {
     btn1x.addEventListener('click', () => setSpeed(1.0, false));
     btn2x.addEventListener('click', () => setSpeed(2.0, false));
 
-    // Audio mute toggle
+    // Audio Mute Toggle
     const btnSound = document.getElementById('btn-sound');
     btnSound.addEventListener('click', () => {
       this.audio.init();
@@ -103,7 +103,7 @@ class App {
       this.tg.hapticSelection();
     });
 
-    // Theme toggle (Day / Night)
+    // Theme Toggle (Day / Night)
     const btnTheme = document.getElementById('btn-theme');
     btnTheme.addEventListener('click', () => {
       this.renderer.isNightMode = !this.renderer.isNightMode;
@@ -112,21 +112,21 @@ class App {
       this.tg.hapticSelection();
     });
 
-    // Center camera button
+    // Center View Button
     const btnCenter = document.getElementById('btn-center');
     btnCenter.addEventListener('click', () => {
-      this.renderer.camX = 0;
-      this.renderer.camY = 0;
-      this.renderer.zoom = 1.0;
+      this.renderer.targetCamX = 0;
+      this.renderer.targetCamY = 0;
+      this.renderer.targetZoom = 1.0;
       this.tg.hapticSelection();
     });
 
-    // City Selector open button
+    // City Selector
     this.cityNameEl.parentElement.addEventListener('click', () => {
       this.showCitySelectModal();
     });
 
-    // Help open button
+    // Help Modal
     document.getElementById('btn-help').addEventListener('click', () => {
       this.helpModal.classList.add('visible');
       this.engine.isPaused = true;
@@ -139,7 +139,7 @@ class App {
       this.tg.hapticSelection();
     });
 
-    // Game Over Restart & Share buttons
+    // Game Over Restart & Share
     document.getElementById('btn-restart').addEventListener('click', () => {
       this.gameOverModal.classList.remove('visible');
       this.initGame();
@@ -151,9 +151,8 @@ class App {
       this.tg.shareScore(level.name, this.engine.score, this.engine.daysSurvived);
     });
 
-    // Remove empty / clear line button
+    // Clear Line Button
     document.getElementById('btn-clear-lines').addEventListener('click', () => {
-      // Clear line with least stations or prompt
       for (let i = this.engine.lines.length - 1; i >= 0; i--) {
         if (this.engine.lines[i].stations.length > 0) {
           this.engine.lines[i].stations = [];
@@ -165,19 +164,54 @@ class App {
       }
     });
 
-    // Dismiss first-time instructions overlay on tap
+    // Assign Extra Locomotive from Inventory to first busy line
+    if (this.trainsCountEl) {
+      this.trainsCountEl.addEventListener('click', () => {
+        if (this.engine.availableLocomotives > 0) {
+          // Find first line with stations that has fewer than 4 trains
+          const eligibleLine = this.engine.lines.find(l => l.stations.length >= 2 && l.trains.length < 4);
+          if (eligibleLine) {
+            const train = this.engine.createTrain(eligibleLine);
+            eligibleLine.trains.push(train);
+            this.engine.availableLocomotives--;
+            if (this.audio) this.audio.playLineConnect();
+            this.tg.hapticNotification('success');
+          }
+        }
+      });
+    }
+
+    // Assign Interchange upgrade to first station with highest crowd
+    if (this.interchangesCountEl) {
+      this.interchangesCountEl.addEventListener('click', () => {
+        if (this.engine.availableInterchanges > 0) {
+          const eligibleStation = this.engine.stations
+            .filter(s => !s.isInterchange)
+            .sort((a, b) => b.peeps.length - a.peeps.length)[0];
+          if (eligibleStation) {
+            eligibleStation.isInterchange = true;
+            eligibleStation.capacity = 18;
+            this.engine.availableInterchanges--;
+            if (this.audio) this.audio.playWeeklyReward();
+            this.tg.hapticNotification('success');
+          }
+        }
+      });
+    }
+
+    // Instructions overlay auto-dismiss
     const tipOverlay = document.getElementById('instructions-tip');
     if (tipOverlay) {
       setTimeout(() => {
         tipOverlay.style.opacity = '0';
         setTimeout(() => tipOverlay.remove(), 600);
-      }, 5000);
+      }, 5500);
     }
   }
 
   showWeeklyModal(week, score, choices) {
     this.weeklyTitleEl.textContent = `Week ${week} Complete!`;
-    this.weeklySubtitleEl.textContent = `${score} passengers delivered. Choose your upgrade:`;
+    this.weeklySubtitleEl.textContent = `${score} passengers delivered. Choose your reward:`;
 
     this.upgradeGridEl.innerHTML = '';
     choices.forEach(ch => {
@@ -200,10 +234,15 @@ class App {
   }
 
   showGameOverModal(data) {
+    this.renderer.focusOnStation(data.overcrowdedStation, 1.6);
     this.finalScoreEl.textContent = data.score;
     this.finalDaysEl.textContent = data.daysSurvived;
-    this.gameOverModal.classList.add('visible');
-    this.tg.hapticNotification('error');
+    if (this.finalCityEl) {
+      this.finalCityEl.textContent = Levels[this.currentLevelId]?.name || 'London';
+    }
+    setTimeout(() => {
+      this.gameOverModal.classList.add('visible');
+    }, 450);
   }
 
   showCitySelectModal() {
@@ -238,7 +277,7 @@ class App {
   }
 
   updateHUD() {
-    // Clock text & hand
+    // Analog Clock display
     const dayStr = this.daysOfWeek[this.engine.dayOfWeek];
     const hourStr = String(this.engine.hour).padStart(2, '0') + ':00';
     this.clockDayEl.textContent = `${dayStr} ${hourStr}`;
@@ -246,10 +285,22 @@ class App {
     const angle = (this.engine.hour / 24) * 360;
     this.clockHandEl.style.transform = `rotate(${angle}deg)`;
 
-    // Bridges & Trains count
-    this.bridgesCountEl.textContent = `🌉 ${this.engine.getAvailableBridges()}`;
+    // Bridges, Trains, Carriages, Interchanges
+    const crossingName = this.engine.level.crossingStyle === 'tunnel' ? '🚇' : '🌉';
+    this.bridgesCountEl.textContent = `${crossingName} ${this.engine.getAvailableBridges()}`;
+
     const totalTrains = this.engine.lines.reduce((sum, l) => sum + l.trains.length, 0);
-    this.trainsCountEl.textContent = `🚂 ${totalTrains}`;
+    this.trainsCountEl.textContent = `🚂 ${totalTrains}${this.engine.availableLocomotives > 0 ? ` (+${this.engine.availableLocomotives})` : ''}`;
+
+    if (this.carriagesCountEl) {
+      this.carriagesCountEl.textContent = `🚃 ${this.engine.availableCarriages}`;
+      this.carriagesCountEl.style.display = this.engine.availableCarriages > 0 ? 'flex' : 'none';
+    }
+
+    if (this.interchangesCountEl) {
+      this.interchangesCountEl.textContent = `🏢 ${this.engine.availableInterchanges}`;
+      this.interchangesCountEl.style.display = this.engine.availableInterchanges > 0 ? 'flex' : 'none';
+    }
 
     // Line Tokens
     this.lineTokensEl.innerHTML = '';
@@ -257,9 +308,8 @@ class App {
       const token = document.createElement('div');
       token.className = `line-token ${line.stations.length > 0 ? 'active' : 'unused'}`;
       token.style.backgroundColor = line.color;
-      token.title = `Line ${idx + 1} (${line.stations.length} stations)`;
+      token.title = `Line ${idx + 1} (${line.stations.length} stations)${line.isLoop ? ' [Loop]' : ''}`;
 
-      // Clicking token resets this line if clicked
       token.addEventListener('click', () => {
         if (line.stations.length > 0) {
           line.stations = [];
@@ -290,7 +340,6 @@ class App {
   }
 }
 
-// Start game when page loads
 window.addEventListener('DOMContentLoaded', () => {
   window.app = new App();
 });

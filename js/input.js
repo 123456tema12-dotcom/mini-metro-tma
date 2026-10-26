@@ -1,6 +1,12 @@
 /* ==========================================================================
    MINI METRO - Touch & Mouse Input Controller
-   Mobile & Tablet gestures: pinch-to-zoom, pan, line drawing, middle-link insertion
+   Mobile & Tablet gestures:
+   - Draw new lines by dragging from station
+   - Extend lines from terminators
+   - Retract lines by dragging backwards over previous station
+   - Close loops by dragging terminator back to start station
+   - Insert intermediate stations by dragging middle-line kinks
+   - Pinch-to-zoom & smooth pan
    ========================================================================== */
 
 import { Geometry } from './geometry.js';
@@ -13,21 +19,25 @@ export class InputManager {
     this.audio = audio;
     this.tg = tg;
 
-    // Interaction modes: 'NONE', 'PAN', 'PINCH', 'DRAW_NEW', 'EXTEND_LINE', 'INSERT_MIDDLE'
+    // Modes: 'NONE', 'PAN', 'PINCH', 'DRAW_NEW', 'EXTEND_LINE', 'INSERT_MIDDLE'
     this.mode = 'NONE';
 
-    // Dragging context
+    // Drag context
     this.activeLine = null;
     this.dragStartStation = null;
     this.targetStation = null;
-    this.dragInsertIndex = -1; // for middle line insertion
+    this.isExtendingFromEnd = true;
+    this.dragInsertIndex = -1;
+    this.segmentS1 = null;
+    this.segmentS2 = null;
 
-    // Pan & Pinch state
-    this.lastPointers = new Map(); // pointerId -> { x, y }
+    // Pan & Pinch pointers
+    this.lastPointers = new Map();
     this.pinchStartDist = 0;
     this.pinchStartZoom = 1.0;
 
-    this.touchThreshold = 32; // Generous touch hitbox radius for mobile thumbs (pixels)
+    this.touchThreshold = 34; // Generous touch hitbox radius for mobile thumbs (pixels)
+    this.lastSnappedStation = null;
 
     this.initEvents();
   }
@@ -37,12 +47,9 @@ export class InputManager {
     this.canvas.addEventListener('pointermove', e => this.handlePointerMove(e), { passive: false });
     this.canvas.addEventListener('pointerup', e => this.handlePointerUp(e), { passive: false });
     this.canvas.addEventListener('pointercancel', e => this.handlePointerUp(e), { passive: false });
-
-    // Desktop mouse wheel zoom
     this.canvas.addEventListener('wheel', e => this.handleWheel(e), { passive: false });
   }
 
-  // Find station under pointer within touch threshold
   findStationNear(worldPos) {
     let closest = null;
     let minDist = this.touchThreshold / this.renderer.zoom;
@@ -57,7 +64,6 @@ export class InputManager {
     return closest;
   }
 
-  // Find line terminator near pointer
   findLineTerminatorNear(worldPos) {
     const threshold = this.touchThreshold / this.renderer.zoom;
     for (const line of this.engine.lines) {
@@ -75,9 +81,8 @@ export class InputManager {
     return null;
   }
 
-  // Find line segment near pointer (for middle-link insertion)
   findLineSegmentNear(worldPos) {
-    const threshold = 16 / this.renderer.zoom;
+    const threshold = 18 / this.renderer.zoom;
     for (const line of this.engine.lines) {
       if (line.stations.length < 2) continue;
       for (let i = 0; i < line.stations.length - 1; i++) {
@@ -86,6 +91,14 @@ export class InputManager {
         const d = Geometry.distToSegment(worldPos, s1, s2);
         if (d < threshold) {
           return { line, index: i + 1, s1, s2 };
+        }
+      }
+      if (line.isLoop && line.stations.length >= 3) {
+        const s1 = line.stations[line.stations.length - 1];
+        const s2 = line.stations[0];
+        const d = Geometry.distToSegment(worldPos, s1, s2);
+        if (d < threshold) {
+          return { line, index: line.stations.length, s1, s2 };
         }
       }
     }
@@ -111,7 +124,7 @@ export class InputManager {
 
     const worldPos = this.renderer.screenToWorld(e.clientX, e.clientY);
 
-    // 1. Check if clicking on an existing line terminator to extend it
+    // 1. Check if clicking on line terminator handle (Extend or Retract)
     const terminator = this.findLineTerminatorNear(worldPos);
     if (terminator) {
       this.mode = 'EXTEND_LINE';
@@ -120,6 +133,7 @@ export class InputManager {
       this.isExtendingFromEnd = terminator.isEnd;
 
       this.renderer.dragPreview = {
+        mode: 'EXTEND',
         line: this.activeLine,
         fromStation: this.dragStartStation,
         currentPos: worldPos,
@@ -129,16 +143,16 @@ export class InputManager {
       return;
     }
 
-    // 2. Check if touching a station to start a new line or extend
+    // 2. Check if touching a station to start new line
     const station = this.findStationNear(worldPos);
     if (station) {
-      // Find an unused line with 0 stations
       const freeLine = this.engine.lines.find(l => l.stations.length === 0);
       if (freeLine) {
         this.mode = 'DRAW_NEW';
         this.activeLine = freeLine;
         this.dragStartStation = station;
         this.renderer.dragPreview = {
+          mode: 'NEW',
           line: this.activeLine,
           fromStation: this.dragStartStation,
           currentPos: worldPos,
@@ -149,16 +163,21 @@ export class InputManager {
       }
     }
 
-    // 3. Check if touching a line segment to insert a middle station
+    // 3. Check if touching a line segment to insert intermediate station (kink drag)
     const segment = this.findLineSegmentNear(worldPos);
     if (segment) {
       this.mode = 'INSERT_MIDDLE';
       this.activeLine = segment.line;
       this.dragInsertIndex = segment.index;
       this.dragStartStation = segment.s1;
+      this.segmentS1 = segment.s1;
+      this.segmentS2 = segment.s2;
+
       this.renderer.dragPreview = {
+        mode: 'INSERT_MIDDLE',
         line: this.activeLine,
-        fromStation: segment.s1,
+        segmentS1: segment.s1,
+        segmentS2: segment.s2,
         currentPos: worldPos,
         targetStation: null
       };
@@ -166,7 +185,7 @@ export class InputManager {
       return;
     }
 
-    // 4. Otherwise, empty space -> Pan camera
+    // 4. Otherwise, pan camera
     this.mode = 'PAN';
   }
 
@@ -178,37 +197,34 @@ export class InputManager {
     const curPos = { x: e.clientX, y: e.clientY };
     this.lastPointers.set(e.pointerId, curPos);
 
-    // Two finger pinch zoom
     if (this.mode === 'PINCH' && this.lastPointers.size === 2) {
       const pts = Array.from(this.lastPointers.values());
       const curDist = Math.hypot(pts[0].x - pts[1].x, pts[0].y - pts[1].y);
       if (this.pinchStartDist > 0) {
         const factor = curDist / this.pinchStartDist;
-        this.renderer.zoom = Math.max(0.4, Math.min(2.5, this.pinchStartZoom * factor));
+        const newZoom = Math.max(0.4, Math.min(2.5, this.pinchStartZoom * factor));
+        this.renderer.zoom = newZoom;
+        this.renderer.targetZoom = newZoom;
       }
       return;
     }
 
-    // Pan camera
     if (this.mode === 'PAN') {
       const dx = (curPos.x - prevPos.x) / this.renderer.zoom;
       const dy = (curPos.y - prevPos.y) / this.renderer.zoom;
       this.renderer.camX -= dx;
       this.renderer.camY -= dy;
+      this.renderer.targetCamX = this.renderer.camX;
+      this.renderer.targetCamY = this.renderer.camY;
       return;
     }
 
-    // Line drawing / extending / inserting
     if (['DRAW_NEW', 'EXTEND_LINE', 'INSERT_MIDDLE'].includes(this.mode)) {
       const worldPos = this.renderer.screenToWorld(e.clientX, e.clientY);
       const nearbyStation = this.findStationNear(worldPos);
 
-      // Check if nearby station is valid target
       let validTarget = null;
-      if (nearbyStation && nearbyStation.id !== this.dragStartStation.id) {
-        // Line can connect if:
-        // - it's not already the immediate neighbor
-        // - or it's closing a loop
+      if (nearbyStation) {
         validTarget = nearbyStation;
       }
 
@@ -247,31 +263,63 @@ export class InputManager {
   finishInteraction() {
     this.renderer.dragPreview = null;
 
-    if (this.targetStation && this.activeLine && this.dragStartStation) {
+    if (this.targetStation && this.activeLine) {
       const line = this.activeLine;
       const target = this.targetStation;
 
-      // Check bridge constraint
-      const crossingRequiresBridge = this.engine.doesSegmentCrossRiver(this.dragStartStation, target);
-      if (crossingRequiresBridge && this.engine.getAvailableBridges() <= 0) {
-        if (this.tg) this.tg.hapticNotification('error');
-        this.cleanupDrag();
-        return;
-      }
+      // 1. Draw new line
+      if (this.mode === 'DRAW_NEW' && this.dragStartStation && target.id !== this.dragStartStation.id) {
+        const crossing = this.engine.doesSegmentCrossRiver(this.dragStartStation, target);
+        if (crossing && this.engine.getAvailableBridges() <= 0) {
+          if (this.tg) this.tg.hapticNotification('error');
+          this.cleanup();
+          return;
+        }
 
-      if (this.mode === 'DRAW_NEW') {
-        // Start new line with [startStation, targetStation]
         line.stations = [this.dragStartStation, target];
         if (this.audio) this.audio.playLineConnect();
         if (this.tg) this.tg.hapticNotification('success');
-      } else if (this.mode === 'EXTEND_LINE') {
-        // Check for loop creation
-        if (line.stations.length >= 2 && target.id === line.stations[0].id && this.isExtendingFromEnd) {
+      }
+
+      // 2. Extend line or Retract line
+      else if (this.mode === 'EXTEND_LINE') {
+        const numSt = line.stations.length;
+
+        // Check for Retract: dragged backwards onto the previous station!
+        if (this.isExtendingFromEnd && numSt >= 2 && target.id === line.stations[numSt - 2].id) {
+          // Remove last station
+          line.stations.pop();
+          line.isLoop = false;
+          if (this.audio) this.audio.playLineConnect();
+          if (this.tg) this.tg.hapticNotification('warning');
+        } else if (!this.isExtendingFromEnd && numSt >= 2 && target.id === line.stations[1].id) {
+          // Remove first station
+          line.stations.shift();
+          line.isLoop = false;
+          if (this.audio) this.audio.playLineConnect();
+          if (this.tg) this.tg.hapticNotification('warning');
+        }
+        // Check for closing loop: connected end to start station!
+        else if (numSt >= 3 && this.isExtendingFromEnd && target.id === line.stations[0].id) {
+          const crossing = this.engine.doesSegmentCrossRiver(line.stations[numSt - 1], target);
+          if (crossing && this.engine.getAvailableBridges() <= 0) {
+            if (this.tg) this.tg.hapticNotification('error');
+            this.cleanup();
+            return;
+          }
           line.isLoop = true;
           if (this.audio) this.audio.playLineConnect();
           if (this.tg) this.tg.hapticNotification('success');
-        } else {
-          // Extend to target station
+        }
+        // Normal extend to new station
+        else if (target.id !== this.dragStartStation.id && !line.isLoop) {
+          const crossing = this.engine.doesSegmentCrossRiver(this.dragStartStation, target);
+          if (crossing && this.engine.getAvailableBridges() <= 0) {
+            if (this.tg) this.tg.hapticNotification('error');
+            this.cleanup();
+            return;
+          }
+
           if (this.isExtendingFromEnd) {
             line.stations.push(target);
           } else {
@@ -280,8 +328,10 @@ export class InputManager {
           if (this.audio) this.audio.playLineConnect();
           if (this.tg) this.tg.hapticNotification('success');
         }
-      } else if (this.mode === 'INSERT_MIDDLE') {
-        // Insert station at index
+      }
+
+      // 3. Insert intermediate station (kink drag)
+      else if (this.mode === 'INSERT_MIDDLE' && this.segmentS1 && this.segmentS2) {
         if (!line.stations.some(s => s.id === target.id)) {
           line.stations.splice(this.dragInsertIndex, 0, target);
           if (this.audio) this.audio.playLineConnect();
@@ -290,20 +340,24 @@ export class InputManager {
       }
     }
 
-    this.cleanupDrag();
+    this.cleanup();
   }
 
-  cleanupDrag() {
+  cleanup() {
     this.activeLine = null;
     this.dragStartStation = null;
     this.targetStation = null;
+    this.segmentS1 = null;
+    this.segmentS2 = null;
     this.dragInsertIndex = -1;
     this.renderer.dragPreview = null;
   }
 
   handleWheel(e) {
     e.preventDefault();
-    const zoomFactor = e.deltaY < 0 ? 1.1 : 0.9;
-    this.renderer.zoom = Math.max(0.4, Math.min(2.5, this.renderer.zoom * zoomFactor));
+    const zoomFactor = e.deltaY < 0 ? 1.12 : 0.88;
+    const newZoom = Math.max(0.4, Math.min(2.5, this.renderer.zoom * zoomFactor));
+    this.renderer.zoom = newZoom;
+    this.renderer.targetZoom = newZoom;
   }
 }
