@@ -42,7 +42,7 @@ export class GameEngine {
 
     // Inventory & Assets
     this.maxLines = this.level.maxLines || 7;
-    this.availableLocomotives = 0; // extra unassigned
+    this.availableLocomotives = 0;
     this.availableCarriages = this.level.initialCarriages || 0;
     this.totalBridges = this.level.initialBridges || 1;
     this.availableInterchanges = this.level.initialInterchanges || 0;
@@ -87,7 +87,6 @@ export class GameEngine {
       isLoop: false
     };
 
-    // Every line starts with 1 free locomotive
     const train = this.createTrain(line);
     line.trains.push(train);
 
@@ -131,7 +130,6 @@ export class GameEngine {
     return station;
   }
 
-  // Count bridges used by all tracks
   getUsedBridgesCount() {
     let count = 0;
     if (!this.level.rivers) return 0;
@@ -167,7 +165,6 @@ export class GameEngine {
     return false;
   }
 
-  // Station and Passenger Spawns
   updateSpawns(dt) {
     // 1. Station Spawner
     this.stationSpawnTimer += dt;
@@ -264,7 +261,6 @@ export class GameEngine {
     if (this.audio) this.audio.playPeepSpawn(targetShape);
   }
 
-  // Update Clock
   updateClock(dt) {
     this.simTime += dt;
     const dayProgress = (this.simTime % this.dayLength) / this.dayLength;
@@ -282,7 +278,6 @@ export class GameEngine {
       this.daysSurvived = currentTotalDays;
     }
 
-    // Week Transition (Sunday 23:59 -> Monday 00:00)
     if (this.dayOfWeek === 6 && newDayOfWeek === 0) {
       this.dayOfWeek = newDayOfWeek;
       this.week++;
@@ -296,7 +291,6 @@ export class GameEngine {
     this.isPaused = true;
     if (this.audio) this.audio.playWeeklyReward();
 
-    // Standard Award: +1 Locomotive
     this.availableLocomotives++;
 
     const choices = [];
@@ -320,7 +314,6 @@ export class GameEngine {
       this.createLine();
     } else if (choiceId === 'carriage') {
       this.availableCarriages++;
-      // Auto attach carriage to train with no carriage if possible
       for (const line of this.lines) {
         for (const train of line.trains) {
           if (train.carriages === 0 && this.availableCarriages > 0) {
@@ -339,7 +332,6 @@ export class GameEngine {
     this.isPaused = false;
   }
 
-  // Update trains along lines
   updateTrains(dt) {
     this.lines.forEach(line => {
       if (line.stations.length < 2) return;
@@ -382,7 +374,8 @@ export class GameEngine {
         if (decision.isDestination) {
           this.score++;
           this.totalPassengersDelivered++;
-          if (this.onScoreChange) this.onScoreChange(this.score);
+          // Pass station coordinates for floating "+1" animation!
+          if (this.onScoreChange) this.onScoreChange(this.score, station.x, station.y);
           if (this.audio) this.audio.playPeepDeliver();
         } else {
           station.peeps.push(peep);
@@ -414,7 +407,6 @@ export class GameEngine {
     // 3. Next Station
     const numStations = line.stations.length;
     if (line.isLoop && numStations >= 3) {
-      // Loop Line: Continuous circulation
       train.nextStationIndex = (train.currentStationIndex + 1) % numStations;
     } else {
       let nextIdx = train.currentStationIndex + train.direction;
@@ -429,7 +421,6 @@ export class GameEngine {
     }
   }
 
-  // Station Overcrowding
   updateOvercrowding(dt) {
     let worstStation = null;
     let maxOvercrowd = 0;

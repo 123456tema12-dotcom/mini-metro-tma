@@ -44,11 +44,20 @@ class App {
     this.cityGridEl = document.getElementById('city-grid');
     this.helpModal = document.getElementById('help-modal');
 
-    this.daysOfWeek = ['MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT', 'SUN'];
+    // Russian day names
+    this.daysOfWeek = ['ПН', 'ВТ', 'СР', 'ЧТ', 'ПТ', 'СБ', 'ВС'];
 
     this.initGame();
     this.initUIControls();
     this.startLoop();
+
+    // Show rules modal on very first visit if never seen
+    if (!localStorage.getItem('metro_rules_viewed')) {
+      setTimeout(() => {
+        this.helpModal.classList.add('visible');
+        this.engine.isPaused = true;
+      }, 400);
+    }
   }
 
   initGame() {
@@ -66,7 +75,12 @@ class App {
       this.audio,
       (week, score, choices) => this.showWeeklyModal(week, score, choices),
       (data) => this.showGameOverModal(data),
-      (score) => this.updateScoreUI(score)
+      (score, x, y) => {
+        this.updateScoreUI(score);
+        if (x !== undefined && y !== undefined) {
+          this.renderer.addScorePopup(x, y, '+1');
+        }
+      }
     );
 
     this.input = new InputManager(this.canvas, this.engine, this.renderer, this.audio, this.tg);
@@ -122,11 +136,11 @@ class App {
     });
 
     // City Selector
-    this.cityNameEl.parentElement.addEventListener('click', () => {
+    document.getElementById('btn-select-city').addEventListener('click', () => {
       this.showCitySelectModal();
     });
 
-    // Help Modal
+    // Help / Rules Modal
     document.getElementById('btn-help').addEventListener('click', () => {
       this.helpModal.classList.add('visible');
       this.engine.isPaused = true;
@@ -135,6 +149,7 @@ class App {
 
     document.getElementById('btn-close-help').addEventListener('click', () => {
       this.helpModal.classList.remove('visible');
+      localStorage.setItem('metro_rules_viewed', 'true');
       this.engine.isPaused = false;
       this.tg.hapticSelection();
     });
@@ -168,7 +183,6 @@ class App {
     if (this.trainsCountEl) {
       this.trainsCountEl.addEventListener('click', () => {
         if (this.engine.availableLocomotives > 0) {
-          // Find first line with stations that has fewer than 4 trains
           const eligibleLine = this.engine.lines.find(l => l.stations.length >= 2 && l.trains.length < 4);
           if (eligibleLine) {
             const train = this.engine.createTrain(eligibleLine);
@@ -205,13 +219,13 @@ class App {
       setTimeout(() => {
         tipOverlay.style.opacity = '0';
         setTimeout(() => tipOverlay.remove(), 600);
-      }, 5500);
+      }, 7000);
     }
   }
 
   showWeeklyModal(week, score, choices) {
-    this.weeklyTitleEl.textContent = `Week ${week} Complete!`;
-    this.weeklySubtitleEl.textContent = `${score} passengers delivered. Choose your reward:`;
+    this.weeklyTitleEl.textContent = `Неделя ${week} завершена!`;
+    this.weeklySubtitleEl.textContent = `Перевезено ${score} пассажиров. Выберите награду:`;
 
     this.upgradeGridEl.innerHTML = '';
     choices.forEach(ch => {
@@ -238,7 +252,7 @@ class App {
     this.finalScoreEl.textContent = data.score;
     this.finalDaysEl.textContent = data.daysSurvived;
     if (this.finalCityEl) {
-      this.finalCityEl.textContent = Levels[this.currentLevelId]?.name || 'London';
+      this.finalCityEl.textContent = Levels[this.currentLevelId]?.name || 'Лондон';
     }
     setTimeout(() => {
       this.gameOverModal.classList.add('visible');
@@ -277,7 +291,6 @@ class App {
   }
 
   updateHUD() {
-    // Analog Clock display
     const dayStr = this.daysOfWeek[this.engine.dayOfWeek];
     const hourStr = String(this.engine.hour).padStart(2, '0') + ':00';
     this.clockDayEl.textContent = `${dayStr} ${hourStr}`;
@@ -285,7 +298,6 @@ class App {
     const angle = (this.engine.hour / 24) * 360;
     this.clockHandEl.style.transform = `rotate(${angle}deg)`;
 
-    // Bridges, Trains, Carriages, Interchanges
     const crossingName = this.engine.level.crossingStyle === 'tunnel' ? '🚇' : '🌉';
     this.bridgesCountEl.textContent = `${crossingName} ${this.engine.getAvailableBridges()}`;
 
@@ -302,13 +314,12 @@ class App {
       this.interchangesCountEl.style.display = this.engine.availableInterchanges > 0 ? 'flex' : 'none';
     }
 
-    // Line Tokens
     this.lineTokensEl.innerHTML = '';
     this.engine.lines.forEach((line, idx) => {
       const token = document.createElement('div');
       token.className = `line-token ${line.stations.length > 0 ? 'active' : 'unused'}`;
       token.style.backgroundColor = line.color;
-      token.title = `Line ${idx + 1} (${line.stations.length} stations)${line.isLoop ? ' [Loop]' : ''}`;
+      token.title = `Ветка ${idx + 1} (${line.stations.length} станций)${line.isLoop ? ' [Кольцо]' : ''}`;
 
       token.addEventListener('click', () => {
         if (line.stations.length > 0) {

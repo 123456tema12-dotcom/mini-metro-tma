@@ -1,9 +1,9 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="ru">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-  <title>Mini Metro - Telegram Mini App</title>
+  <title>Mini Metro — Telegram Mini App</title>
 
   <!-- Telegram WebApp Script -->
   <script src="https://telegram.org/js/telegram-web-app.js"></script>
@@ -20,13 +20,13 @@
     <header class="hud-top">
       <div class="hud-group">
         <!-- City Select Button -->
-        <div class="hud-pill" style="cursor: pointer;" title="Change City">
+        <div class="hud-pill" id="btn-select-city" style="cursor: pointer;" title="Сменить город">
           <span id="city-name">LONDON</span>
           <span style="font-size: 10px; opacity: 0.6;">▼</span>
         </div>
 
         <!-- Passenger Score -->
-        <div class="hud-pill score-pill">
+        <div class="hud-pill score-pill" title="Доставлено пассажиров">
           <span class="score-icon">👥</span>
           <span id="score-value">0</span>
         </div>
@@ -38,64 +38,64 @@
           <span class="clock-circle">
             <span class="clock-hand" id="clock-hand"></span>
           </span>
-          <span class="clock-day" id="clock-day">MON 08:00</span>
+          <span class="clock-day" id="clock-day">ПН 08:00</span>
         </div>
 
         <div class="speed-group">
-          <button class="speed-btn" id="btn-pause" title="Pause">❚❚</button>
-          <button class="speed-btn active" id="btn-1x" title="Normal Speed">▶</button>
-          <button class="speed-btn" id="btn-2x" title="Fast Forward">▶▶</button>
+          <button class="speed-btn" id="btn-pause" title="Пауза">❚❚</button>
+          <button class="speed-btn active" id="btn-1x" title="Обычная скорость">▶</button>
+          <button class="speed-btn" id="btn-2x" title="Ускорение">▶▶</button>
         </div>
 
         <!-- Utility buttons -->
-        <button class="hud-btn" id="btn-sound" title="Toggle Sound">🔊</button>
-        <button class="hud-btn" id="btn-theme" title="Toggle Theme">☀️</button>
-        <button class="hud-btn" id="btn-center" title="Center View">🎯</button>
-        <button class="hud-btn" id="btn-help" title="How to Play">❓</button>
+        <button class="hud-btn" id="btn-sound" title="Звук">🔊</button>
+        <button class="hud-btn" id="btn-theme" title="Сменить тему">☀️</button>
+        <button class="hud-btn" id="btn-center" title="Центрировать">🎯</button>
+        <button class="hud-btn" id="btn-help" title="Правила игры">❓</button>
       </div>
     </header>
 
-    <!-- Instructions Overlay -->
+    <!-- Quick Instructions Overlay -->
     <div class="instructions-overlay" id="instructions-tip">
-      💡 Drag from a station to draw a metro line. Drag end to extend or reverse to shorten!
+      💡 <strong>Как играть:</strong> Зажмите станцию и протяните рельсы к другой. Пассажиры едут на станции <u>своей</u> формы!
     </div>
 
     <!-- Bottom Inventory Bar -->
     <footer class="hud-bottom">
       <div class="inventory-panel">
         <div class="inventory-item">
-          <span>🚇 Lines:</span>
+          <span>🚇 Ветки:</span>
           <div class="line-tokens-container" id="line-tokens"></div>
         </div>
 
-        <div class="inventory-item" id="bridges-count" title="Available Tunnels/Bridges">
+        <div class="inventory-item" id="bridges-count" title="Доступно мостов/тоннелей">
           🌉 1
         </div>
 
-        <div class="inventory-item" id="trains-count" title="Total Trains">
+        <div class="inventory-item" id="trains-count" title="Всего поездов (клик для добавления)">
           🚂 3
         </div>
 
-        <div class="inventory-item" id="carriages-count" style="display: none;" title="Available Carriages">
+        <div class="inventory-item" id="carriages-count" style="display: none;" title="Доступные вагоны">
           🚃 0
         </div>
 
-        <div class="inventory-item" id="interchanges-count" style="display: none;" title="Available Interchanges">
+        <div class="inventory-item" id="interchanges-count" style="display: none;" title="Узловые вокзалы (клик для улучшения)">
           🏢 0
         </div>
 
-        <button class="delete-line-btn" id="btn-clear-lines" title="Delete a line">✕ Line</button>
+        <button class="delete-line-btn" id="btn-clear-lines" title="Удалить последнюю ветку">✕ Ветка</button>
       </div>
     </footer>
 
     <!-- Weekly Upgrade Modal -->
     <div class="modal-backdrop" id="weekly-modal">
       <div class="modal-card">
-        <div class="modal-title" id="weekly-title">Week 1 Complete!</div>
-        <div class="modal-subtitle" id="weekly-subtitle">Choose your reward to expand the network:</div>
+        <div class="modal-title" id="weekly-title">Неделя 1 завершена!</div>
+        <div class="modal-subtitle" id="weekly-subtitle">Пассажиров перевезено. Выберите награду для расширения сети:</div>
 
         <div class="upgrade-auto-badge">
-          🚂 Awarded: <strong>+1 Locomotive</strong>
+          🚂 Награда: <strong>+1 Поезд (Локомотив)</strong>
         </div>
 
         <div class="upgrade-choices-grid" id="upgrade-grid">
@@ -107,56 +107,77 @@
     <!-- Game Over Modal -->
     <div class="modal-backdrop" id="game-over-modal">
       <div class="modal-card">
-        <div class="modal-title" style="color: var(--danger-color);">Station Overcrowded!</div>
-        <div class="modal-subtitle">A station exceeded capacity for too long in <span id="final-city" style="font-weight: 700;">London</span> and the network shut down.</div>
+        <div class="modal-title" style="color: var(--danger-color);">Станция переполнена!</div>
+        <div class="modal-subtitle">Пассажиров на станции стало слишком много, и метрополитен города <span id="final-city" style="font-weight: 700;">Лондон</span> был закрыт.</div>
 
         <div class="game-over-stats">
           <div class="stat-item">
             <span class="stat-value" id="final-score">0</span>
-            <span class="stat-label">Passengers</span>
+            <span class="stat-label">Пассажиров</span>
           </div>
           <div class="stat-item">
             <span class="stat-value" id="final-days">0</span>
-            <span class="stat-label">Days Survived</span>
+            <span class="stat-label">Дней работы</span>
           </div>
         </div>
 
-        <button class="btn-primary" id="btn-restart">Play Again</button>
-        <button class="btn-secondary" id="btn-share">Share Result on Telegram</button>
+        <button class="btn-primary" id="btn-restart">Играть снова</button>
+        <button class="btn-secondary" id="btn-share">Поделиться в Telegram</button>
       </div>
     </div>
 
     <!-- City Select Modal -->
     <div class="modal-backdrop" id="city-modal">
       <div class="modal-card">
-        <div class="modal-title">Select Metro City</div>
-        <div class="modal-subtitle">Choose a transit network with unique geography:</div>
+        <div class="modal-title">Выберите город</div>
+        <div class="modal-subtitle">Каждый мегаполис имеет свои реки, мосты и особенности:</div>
 
         <div class="city-select-grid" id="city-grid">
           <!-- Cities populated via JS -->
         </div>
 
-        <button class="btn-secondary" id="btn-close-city">Close</button>
+        <button class="btn-secondary" id="btn-close-city">Закрыть</button>
       </div>
     </div>
 
-    <!-- Help / Guide Modal -->
+    <!-- Help / Rules Modal -->
     <div class="modal-backdrop" id="help-modal">
-      <div class="modal-card" style="text-align: left;">
-        <div class="modal-title" style="text-align: center;">How to Play</div>
-        <div class="modal-subtitle" style="text-align: center;">Master the art of subway network planning</div>
+      <div class="modal-card" style="text-align: left; max-height: 80vh; overflow-y: auto;">
+        <div class="modal-title" style="text-align: center;">Правила игры Mini Metro</div>
+        <div class="modal-subtitle" style="text-align: center;">Схема метрополитена в ваших руках</div>
 
-        <div style="font-size: 13px; line-height: 1.6; display: flex; flex-direction: column; gap: 10px; margin-bottom: 16px;">
-          <p><strong>1. Draw Lines:</strong> Touch and drag from any station to another station to lay tracks.</p>
-          <p><strong>2. Extend & Loop:</strong> Drag the circle handle at the end of a line to connect more stations, or drag back to the starting station to form a continuous loop!</p>
-          <p><strong>3. Retract Lines:</strong> Drag the end handle backwards over the previous station to remove that station from the line.</p>
-          <p><strong>4. Insert Stations:</strong> Drag any line segment between two stations onto a third station to route trains through it.</p>
-          <p><strong>5. Watch Overcrowding:</strong> Stations hold up to 6 passengers (or 18 for Interchanges). If a station exceeds capacity, a warning timer starts ticking!</p>
-          <p><strong>6. Sunday Upgrades:</strong> Survive until Sunday night to receive new trains, lines, tunnels, and interchanges.</p>
-          <p><strong>7. Mobile Navigation:</strong> Use two fingers to pinch-to-zoom and pan across the city map.</p>
+        <div style="font-size: 13px; line-height: 1.6; display: flex; flex-direction: column; gap: 12px; margin-bottom: 16px;">
+          <div style="background: rgba(43, 108, 176, 0.08); padding: 10px; border-radius: 8px;">
+            <strong>🎯 Главная цель:</strong> Перевозить пассажиров на станции их формы и не допускать переполнения станций!
+          </div>
+
+          <p><strong>1. Фигуры станций:</strong> Станции бывают разными: <strong>○ Круг</strong>, <strong>△ Треугольник</strong>, <strong>□ Квадрат</strong>, а также редкие (☆ Звезда, ◇ Алмаз).</p>
+
+          <p><strong>2. Куда едут пассажиры:</strong> Рядом со станциями появляются пассажиры (маленькие фигурки). Форма пассажира показывает, на какую станцию он хочет приехать! (Например, пассажир-квадратик на станции-круге хочет доехать до станции-квадрата).</p>
+
+          <p><strong>3. Как строить рельсы:</strong>
+            <br>• Зажмите пальцем станцию и протяните к другой станции — появится ветка и сразу поедет поезд.
+            <br>• Зажмите <strong>круглый маркер на конце ветки</strong> — потяните вперед, чтобы продлить ветку, или потяните назад на предыдущую станцию, чтобы <strong>сократить её</strong>.
+            <br>• Зажмите <strong>середину рельсов</strong> и потяните на третью станцию, чтобы вставить её в маршрут.
+            <br>• Соедините конец ветки с её началом, чтобы сделать <strong>кольцевую линию</strong>!
+          </p>
+
+          <p><strong>4. Пересадки:</strong> Если две станции не соединены одной прямой линией, пассажиры сделают пересадку на узловой станции, где пересекаются ветки!</p>
+
+          <p><strong>5. ⚠️ Переполнение (Опасность!):</strong>
+            <br>На каждой станции помещается максимум <strong>6 пассажиров</strong>. Если людей становится больше 6, вокруг станции включается круговой таймер тревоги. Если вовремя не разгрузить её поездом — игра закончится!
+          </p>
+
+          <p><strong>6. 🎁 Награды по воскресеньям:</strong>
+            <br>Каждое воскресенье в 23:59 игра дарит новый поезд и выбор бонуса: новая ветка, вагон, мосты через реки или узловой вокзал на 18 мест.
+          </p>
+
+          <p><strong>7. 📱 Управление на телефоне:</strong>
+            <br>Масштабируйте карту двумя пальцами (pinch-to-zoom) и двигайте карту одним пальцем по пустому месту.
+          </p>
         </div>
 
-        <button class="btn-primary" id="btn-close-help">Got it!</button>
+        <button class="btn-primary" id="btn-close-help">Всё понятно, играть!</button>
       </div>
     </div>
   </div>

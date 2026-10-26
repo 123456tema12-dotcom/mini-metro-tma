@@ -1,11 +1,10 @@
 /* ==========================================================================
    MINI METRO - Geometry & Transit Track Routing Utilities
-   Strict 45°/90° octilinear routing, rounded corner fillets, parallel track offsets,
-   and river crossing detection for bridges and tunnels.
+   Strict 45°/90° octilinear routing, canonical bidirectional curves,
+   parallel track offsets, and river crossing detection for bridges/tunnels.
    ========================================================================== */
 
 export const Geometry = {
-  // Distance between two 2D points
   dist(p1, p2) {
     const dx = p1.x - p2.x;
     const dy = p1.y - p2.y;
@@ -18,7 +17,6 @@ export const Geometry = {
     return dx * dx + dy * dy;
   },
 
-  // Closest point on line segment [a, b] to point p
   closestPointOnSegment(p, a, b) {
     const l2 = this.distSq(a, b);
     if (l2 === 0) return { x: a.x, y: a.y, t: 0 };
@@ -36,7 +34,6 @@ export const Geometry = {
     return this.dist(p, cp);
   },
 
-  // Test if two segments [p1, p2] and [p3, p4] intersect
   segmentsIntersect(p1, p2, p3, p4) {
     const ccw = (a, b, c) => (c.y - a.y) * (b.x - a.x) > (b.y - a.y) * (c.x - a.x);
     return (
@@ -45,25 +42,6 @@ export const Geometry = {
     );
   },
 
-  // Find exact intersection point of two segments, if any
-  segmentIntersectionPoint(p1, p2, p3, p4) {
-    const d = (p2.x - p1.x) * (p4.y - p3.y) - (p2.y - p1.y) * (p4.x - p3.x);
-    if (Math.abs(d) < 0.0001) return null;
-
-    const u = ((p3.x - p1.x) * (p4.y - p3.y) - (p3.y - p1.y) * (p4.x - p3.x)) / d;
-    const v = ((p3.x - p1.x) * (p2.y - p1.y) - (p3.y - p1.y) * (p2.x - p1.x)) / d;
-
-    if (u >= 0 && u <= 1 && v >= 0 && v <= 1) {
-      return {
-        x: p1.x + u * (p2.x - p1.x),
-        y: p1.y + u * (p2.y - p1.y),
-        u: u
-      };
-    }
-    return null;
-  },
-
-  // Check if a line segment crosses any edge of a polygon
   segmentCrossesPolygon(p1, p2, polyPoints) {
     if (!polyPoints || polyPoints.length < 3) return false;
     for (let i = 0; i < polyPoints.length; i++) {
@@ -76,23 +54,6 @@ export const Geometry = {
     return false;
   },
 
-  // Find all intersection points of a segment with a polygon (e.g. river banks)
-  getRiverCrossingIntervals(p1, p2, polyPoints) {
-    if (!polyPoints || polyPoints.length < 3) return [];
-    const hits = [];
-    for (let i = 0; i < polyPoints.length; i++) {
-      const a = polyPoints[i];
-      const b = polyPoints[(i + 1) % polyPoints.length];
-      const hit = this.segmentIntersectionPoint(p1, p2, a, b);
-      if (hit) {
-        hits.push(hit);
-      }
-    }
-    hits.sort((a, b) => a.u - b.u);
-    return hits;
-  },
-
-  // Compute perpendicular offset normal vector for a segment [p1, p2]
   getNormal(p1, p2, offsetDistance = 1) {
     const dx = p2.x - p1.x;
     const dy = p2.y - p1.y;
@@ -104,45 +65,73 @@ export const Geometry = {
   },
 
   /**
-   * Authentic Mini Metro Octilinear Routing (0°, 45°, 90°, 135°...)
-   * Lines strictly bend at 45° or 90° with smooth rounded corners.
+   * Canonical Octilinear Track Routing:
+   * GUARANTEES that the track curve between station A and station B is
+   * 100% IDENTICAL whether traveling forward (A -> B) or backward (B -> A).
+   * This prevents trains from ever flying off the track!
    */
-  generateMetroPath(p1, p2) {
-    const dx = p2.x - p1.x;
-    const dy = p2.y - p1.y;
+  getCanonicalMetroPath(s1, s2, offset = 0) {
+    // Determine canonical station ordering
+    let reverse = false;
+    let pA = s1;
+    let pB = s2;
+
+    if (s1.id > s2.id) {
+      pA = s2;
+      pB = s1;
+      reverse = true;
+    }
+
+    const dx = pB.x - pA.x;
+    const dy = pB.y - pA.y;
     const ax = Math.abs(dx);
     const ay = Math.abs(dy);
 
-    // Direct line if already strictly horizontal, vertical, or 45-degree diagonal
-    if (ax < 2 || ay < 2 || Math.abs(ax - ay) < 2) {
-      return [p1, p2];
+    // Calculate parallel track offset vector
+    let nx = 0;
+    let ny = 0;
+    if (offset !== 0) {
+      const len = Math.hypot(dx, dy) || 1;
+      nx = (-dy / len) * offset;
+      ny = (dx / len) * offset;
     }
 
-    const signX = Math.sign(dx);
-    const signY = Math.sign(dy);
+    const start = { x: pA.x + nx, y: pA.y + ny };
+    const end = { x: pB.x + nx, y: pB.y + ny };
 
-    // Choose whether to bend horizontally first or vertically first
-    // In Mini Metro, the longer axis gets the straight run first
-    let bend;
-    if (ax > ay) {
-      bend = {
-        x: p1.x + (ax - ay) * signX,
-        y: p1.y
-      };
+    let points;
+    // If straight line or 45-degree diagonal
+    if (ax < 3 || ay < 3 || Math.abs(ax - ay) < 3) {
+      points = [start, end];
     } else {
-      bend = {
-        x: p1.x,
-        y: p1.y + (ay - ax) * signY
-      };
+      const signX = Math.sign(dx) || 1;
+      const signY = Math.sign(dy) || 1;
+
+      let bend;
+      if (ax > ay) {
+        bend = {
+          x: start.x + (ax - ay) * signX,
+          y: start.y
+        };
+      } else {
+        bend = {
+          x: start.x,
+          y: start.y + (ay - ax) * signY
+        };
+      }
+      points = [start, bend, end];
     }
 
-    return [p1, bend, p2];
+    // If caller asked for path from s1 to s2, and canonical was s2 to s1, reverse points
+    if (reverse) {
+      points = [...points].reverse();
+    }
+
+    return points;
   },
 
-  /**
-   * Draw rounded path on Canvas 2D with smooth corner radius (fillet)
-   */
-  drawRoundedPath(ctx, points, cornerRadius = 14) {
+  // Draw smooth rounded path
+  drawRoundedPath(ctx, points, cornerRadius = 16) {
     if (!points || points.length < 2) return;
     if (points.length === 2) {
       ctx.moveTo(points[0].x, points[0].y);
@@ -166,7 +155,7 @@ export const Geometry = {
   },
 
   /**
-   * Evaluate position and tangent angle along a multi-segment path at progress t [0..1]
+   * Traverse a multi-segment path at progress t [0..1]
    */
   pointAlongPath(points, t) {
     if (!points || points.length === 0) return { x: 0, y: 0, angle: 0 };
@@ -190,7 +179,7 @@ export const Geometry = {
       totalLen += segLen;
     }
 
-    let targetLen = t * totalLen;
+    const targetLen = t * totalLen;
     let accum = 0;
     for (let i = 0; i < lens.length; i++) {
       if (accum + lens[i] >= targetLen || i === lens.length - 1) {

@@ -1,13 +1,14 @@
 /* ==========================================================================
    MINI METRO - High-DPI Canvas 2D Rendering Engine
    Authentic Harry Beck / Vignelli subway map style:
-   - Octilinear 45°/90° track routing
+   - 100% synchronized train and track paths (no flying off tracks!)
+   - Octilinear 45°/90° curves with corner fillets
    - Parallel multi-line track corridors
    - Dashed tunnels & bridges across rivers
    - Crisp geometric station glyphs & queues
    - Passenger icons inside trains
    - Clockwise overcrowding countdown gauge
-   - Camera zoom, pan & game-over focus
+   - Floating "+1" score animations & tutorial hints
    ========================================================================== */
 
 import { Geometry } from './geometry.js';
@@ -29,8 +30,11 @@ export class Renderer {
     // Theme state
     this.isNightMode = false;
 
-    // Drag previews
-    this.dragPreview = null; // { mode, line, fromStation, currentPos, targetStation, insertIndex }
+    // Drag preview state
+    this.dragPreview = null;
+
+    // Floating score popups: array of { x, y, text, alpha, vy }
+    this.scorePopups = [];
 
     this.resize();
   }
@@ -64,7 +68,6 @@ export class Renderer {
     };
   }
 
-  // Smooth camera interpolation
   updateCamera(dt) {
     const lerpSpeed = Math.min(1.0, dt * 6.0);
     this.camX += (this.targetCamX - this.camX) * lerpSpeed;
@@ -77,6 +80,58 @@ export class Renderer {
     this.targetCamX = station.x;
     this.targetCamY = station.y;
     this.targetZoom = zoom;
+  }
+
+  addScorePopup(x, y, text = '+1') {
+    this.scorePopups.push({
+      x,
+      y: y - 10,
+      text,
+      alpha: 1.0,
+      vy: -22
+    });
+  }
+
+  updatePopups(dt) {
+    for (let i = this.scorePopups.length - 1; i >= 0; i--) {
+      const p = this.scorePopups[i];
+      p.y += p.vy * dt;
+      p.alpha -= dt * 1.2;
+      if (p.alpha <= 0) {
+        this.scorePopups.splice(i, 1);
+      }
+    }
+  }
+
+  // Calculate parallel track offset for any link between s1 and s2
+  getLinkOffset(s1, s2, line, allLines) {
+    const key = [s1.id, s2.id].sort().join('--');
+    const sharingLines = [];
+
+    allLines.forEach(l => {
+      if (l.stations.length < 2) return;
+      for (let i = 0; i < l.stations.length - 1; i++) {
+        const k = [l.stations[i].id, l.stations[i + 1].id].sort().join('--');
+        if (k === key && !sharingLines.some(item => item.id === l.id)) {
+          sharingLines.push(l);
+        }
+      }
+      if (l.isLoop && l.stations.length >= 3) {
+        const k = [l.stations[l.stations.length - 1].id, l.stations[0].id].sort().join('--');
+        if (k === key && !sharingLines.some(item => item.id === l.id)) {
+          sharingLines.push(l);
+        }
+      }
+    });
+
+    const total = sharingLines.length;
+    if (total <= 1) return 0;
+
+    const idx = sharingLines.findIndex(l => l.id === line.id);
+    if (idx === -1) return 0;
+
+    const spacing = 9.0;
+    return (idx - (total - 1) / 2) * spacing;
   }
 
   // Draw Water Bodies / Rivers
@@ -106,63 +161,29 @@ export class Renderer {
     });
   }
 
-  // Draw Metro Lines with Parallel Offsets and River Crossings (Bridges / Tunnels)
+  // Draw Metro Lines with exact canonical paths
   drawLines(lines, level) {
     const ctx = this.ctx;
     const rivers = level.rivers || [];
     const crossingStyle = level.crossingStyle || 'bridge';
 
-    // 1. Identify pairs of stations shared by multiple lines to offset them
-    const linkMap = new Map();
-    lines.forEach(line => {
-      if (line.stations.length < 2) return;
-      const processPair = (s1, s2) => {
-        const key = [s1.id, s2.id].sort().join('--');
-        if (!linkMap.has(key)) linkMap.set(key, []);
-        linkMap.get(key).push({ line, s1, s2 });
-      };
-
-      for (let i = 0; i < line.stations.length - 1; i++) {
-        processPair(line.stations[i], line.stations[i + 1]);
-      }
-      if (line.isLoop && line.stations.length >= 3) {
-        processPair(line.stations[line.stations.length - 1], line.stations[0]);
-      }
-    });
-
-    // 2. Render each segment
     lines.forEach(line => {
       if (line.stations.length < 2) return;
 
       const drawSegment = (s1, s2) => {
-        const key = [s1.id, s2.id].sort().join('--');
-        const sharingLines = linkMap.get(key) || [];
-        const indexInSharing = sharingLines.findIndex(item => item.line.id === line.id);
-        const totalSharing = sharingLines.length;
+        const offset = this.getLinkOffset(s1, s2, line, lines);
+        // Canonical octilinear path
+        const pathPoints = Geometry.getCanonicalMetroPath(s1, s2, offset);
 
-        // Calculate parallel track offset
-        let offsetDistance = 0;
-        if (totalSharing > 1) {
-          const spacing = 9.0;
-          offsetDistance = (indexInSharing - (totalSharing - 1) / 2) * spacing;
-        }
-
-        const normal = Geometry.getNormal(s1, s2, offsetDistance);
-        const p1 = { x: s1.x + normal.x, y: s1.y + normal.y };
-        const p2 = { x: s2.x + normal.x, y: s2.y + normal.y };
-
-        const pathPoints = Geometry.generateMetroPath(p1, p2);
-
-        // Check if segment crosses river
+        // Test river crossing
         let crossesRiver = false;
         for (const river of rivers) {
-          if (Geometry.segmentCrossesPolygon(p1, p2, river)) {
+          if (Geometry.segmentCrossesPolygon(s1, s2, river)) {
             crossesRiver = true;
             break;
           }
         }
 
-        // Standard track stroke
         ctx.strokeStyle = line.color;
         ctx.lineWidth = 7.0;
         ctx.lineCap = 'round';
@@ -170,14 +191,14 @@ export class Renderer {
 
         if (crossesRiver) {
           if (crossingStyle === 'tunnel') {
-            // London Tube Tunnel: dashed track under water
+            // Tunnel: dashed line
             ctx.setLineDash([7, 5]);
             ctx.beginPath();
             Geometry.drawRoundedPath(ctx, pathPoints, 16);
             ctx.stroke();
             ctx.setLineDash([]);
           } else {
-            // Bridge: draw solid track with bridge casing
+            // Bridge: casing + track
             ctx.save();
             ctx.strokeStyle = '#ffffff';
             ctx.lineWidth = 11.0;
@@ -207,7 +228,7 @@ export class Renderer {
       }
     });
 
-    // 3. Draw Line Terminators (T-bar / grab handle at line ends)
+    // Draw Line Terminators (end circle grab handles)
     lines.forEach(line => {
       if (line.stations.length < 2 || line.isLoop) return;
       const ends = [line.stations[0], line.stations[line.stations.length - 1]];
@@ -224,7 +245,7 @@ export class Renderer {
     });
   }
 
-  // Draw active drag preview (new line, extending, or middle-line kink)
+  // Draw Active Drag Preview
   drawDragPreview() {
     if (!this.dragPreview) return;
     const { mode, line, fromStation, currentPos, targetStation, segmentS1, segmentS2 } = this.dragPreview;
@@ -239,17 +260,15 @@ export class Renderer {
     ctx.setLineDash([8, 6]);
 
     if (mode === 'INSERT_MIDDLE' && segmentS1 && segmentS2) {
-      // Draw rubber-band kink from S1 -> cursor -> S2
       const endPoint = targetStation ? targetStation : currentPos;
-      const path1 = Geometry.generateMetroPath(segmentS1, endPoint);
-      const path2 = Geometry.generateMetroPath(endPoint, segmentS2);
+      const path1 = Geometry.getCanonicalMetroPath(segmentS1, endPoint);
+      const path2 = Geometry.getCanonicalMetroPath(endPoint, segmentS2);
 
       ctx.beginPath();
       Geometry.drawRoundedPath(ctx, path1, 16);
       Geometry.drawRoundedPath(ctx, path2, 16);
       ctx.stroke();
 
-      // End cursor circle
       ctx.setLineDash([]);
       ctx.beginPath();
       ctx.arc(endPoint.x, endPoint.y, 10, 0, Math.PI * 2);
@@ -259,9 +278,8 @@ export class Renderer {
       ctx.lineWidth = 2.5;
       ctx.stroke();
     } else {
-      // Normal draw new or extend
       const endPoint = targetStation ? targetStation : currentPos;
-      const path = Geometry.generateMetroPath(fromStation, endPoint);
+      const path = Geometry.getCanonicalMetroPath(fromStation, endPoint);
 
       ctx.beginPath();
       Geometry.drawRoundedPath(ctx, path, 16);
@@ -280,7 +298,7 @@ export class Renderer {
     ctx.restore();
   }
 
-  // Draw Trains with passenger shape glyphs inside
+  // Draw Trains: GUARANTEED to follow the EXACT same path as drawLines!
   drawTrains(lines) {
     const ctx = this.ctx;
 
@@ -292,14 +310,15 @@ export class Renderer {
         const s2 = line.stations[train.nextStationIndex];
         if (!s1 || !s2) return;
 
-        const pathPoints = Geometry.generateMetroPath(s1, s2);
+        // Use the EXACT SAME canonical path and offset as drawLines!
+        const offset = this.getLinkOffset(s1, s2, line, lines);
+        const pathPoints = Geometry.getCanonicalMetroPath(s1, s2, offset);
         const trainPos = Geometry.pointAlongPath(pathPoints, train.progress);
 
         ctx.save();
         ctx.translate(trainPos.x, trainPos.y);
         ctx.rotate(trainPos.angle);
 
-        // Train Locomotive Dimensions
         const trainLen = 26;
         const trainWidth = 13;
 
@@ -382,7 +401,7 @@ export class Renderer {
       ctx.save();
       ctx.translate(st.x, st.y);
 
-      // Overcrowding Warning Countdown Gauge (fills clockwise from 12 o'clock)
+      // Overcrowding Warning Countdown Gauge
       if (st.overcrowdTimer > 0) {
         ctx.beginPath();
         const startAngle = -Math.PI / 2;
@@ -390,7 +409,6 @@ export class Renderer {
 
         ctx.arc(0, 0, 24, startAngle, endAngle, false);
         if (st.overcrowdTimer > 0.65) {
-          // Urgent pulsing red
           const pulse = (Math.sin(Date.now() * 0.018) + 1) * 0.5;
           ctx.strokeStyle = pulse > 0.4 ? '#ef4444' : '#b91c1c';
           ctx.lineWidth = 5.0;
@@ -444,6 +462,54 @@ export class Renderer {
     });
   }
 
+  // Draw Animated Tutorial Hint (pulsing connection line when no lines exist)
+  drawTutorialHint(engine) {
+    const totalConnected = engine.lines.reduce((sum, l) => sum + l.stations.length, 0);
+    if (totalConnected > 0 || engine.stations.length < 2) return;
+
+    const s1 = engine.stations[0];
+    const s2 = engine.stations[1];
+    const ctx = this.ctx;
+
+    const pulse = (Math.sin(Date.now() * 0.005) + 1) * 0.5;
+    ctx.save();
+    ctx.strokeStyle = `rgba(245, 158, 11, ${0.4 + pulse * 0.5})`;
+    ctx.lineWidth = 4.0;
+    ctx.setLineDash([8, 8]);
+    ctx.lineDashOffset = -Date.now() * 0.02;
+
+    const path = Geometry.getCanonicalMetroPath(s1, s2);
+    ctx.beginPath();
+    Geometry.drawRoundedPath(ctx, path, 16);
+    ctx.stroke();
+
+    // Draw animated pulsating hand / dot
+    const midPoint = Geometry.pointAlongPath(path, (Date.now() % 2000) / 2000);
+    ctx.setLineDash([]);
+    ctx.beginPath();
+    ctx.arc(midPoint.x, midPoint.y, 8, 0, Math.PI * 2);
+    ctx.fillStyle = '#f59e0b';
+    ctx.fill();
+    ctx.strokeStyle = '#ffffff';
+    ctx.lineWidth = 2.0;
+    ctx.stroke();
+
+    ctx.restore();
+  }
+
+  // Draw Floating Score Popups ("+1")
+  drawScorePopups() {
+    const ctx = this.ctx;
+    this.scorePopups.forEach(p => {
+      ctx.save();
+      ctx.font = 'bold 16px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif';
+      ctx.fillStyle = `rgba(16, 185, 129, ${p.alpha})`;
+      ctx.textAlign = 'center';
+      ctx.fillText(p.text, p.x, p.y);
+      ctx.restore();
+    });
+  }
+
   // Draw Geometric Shape Glyphs
   drawShapeGlyph(ctx, x, y, type, radius, isFilledOnly = false) {
     ctx.beginPath();
@@ -453,7 +519,6 @@ export class Renderer {
         break;
 
       case 'triangle': {
-        const h = radius * 1.732;
         ctx.moveTo(x, y - radius * 1.15);
         ctx.lineTo(x + radius, y + radius * 0.75);
         ctx.lineTo(x - radius, y + radius * 0.75);
@@ -538,17 +603,15 @@ export class Renderer {
     const height = this.canvas.height;
     const theme = engine.level.theme;
 
-    // Smooth camera updates
     this.updateCamera(1 / 60);
+    this.updatePopups(1 / 60);
 
-    // Reset canvas transform
     ctx.setTransform(1, 0, 0, 1, 0, 0);
 
     // Background fill
     ctx.fillStyle = this.isNightMode ? theme.bgNight : theme.bgDay;
     ctx.fillRect(0, 0, width, height);
 
-    // Apply Camera view
     ctx.save();
     ctx.scale(this.dpr, this.dpr);
     ctx.translate(width / (2 * this.dpr), height / (2 * this.dpr));
@@ -558,17 +621,23 @@ export class Renderer {
     // 1. Rivers & Water
     this.drawRivers(engine.level.rivers, theme);
 
-    // 2. Metro Lines (with tunnels and bridges)
+    // 2. Tutorial pulsing guide if no lines
+    this.drawTutorialHint(engine);
+
+    // 3. Metro Lines
     this.drawLines(engine.lines, engine.level);
 
-    // 3. Active Line Drag Preview
+    // 4. Drag Preview
     this.drawDragPreview();
 
-    // 4. Trains & Carriages
+    // 5. Trains & Carriages
     this.drawTrains(engine.lines);
 
-    // 5. Stations, Shapes & Queues (drawn on top of lines!)
+    // 6. Stations, Shapes & Queues (drawn on top of lines!)
     this.drawStations(engine.stations, theme);
+
+    // 7. Floating "+1" score popups
+    this.drawScorePopups();
 
     ctx.restore();
   }
