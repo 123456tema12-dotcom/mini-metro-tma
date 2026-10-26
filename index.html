@@ -57,7 +57,7 @@
 
     <!-- Quick Instructions Overlay -->
     <div class="instructions-overlay" id="instructions-tip">
-      💡 <strong>Как играть:</strong> Зажмите станцию и протяните рельсы к другой. Пассажиры едут на станции <u>своей</u> формы!
+      💡 <strong>Как играть:</strong> Зажмите станцию и протяните рельсы к другой. Нажмите ❓ для полных правил.
     </div>
 
     <!-- Bottom Inventory Bar -->
@@ -80,7 +80,7 @@
           🚃 0
         </div>
 
-        <div class="inventory-item" id="interchanges-count" style="display: none;" title="Узловые вокзалы (клик для улучшения)">
+        <div class="inventory-item" id="interchanges-count" style="display: none;" title="Узловые вокзалы">
           🏢 0
         </div>
 
@@ -140,44 +140,48 @@
       </div>
     </div>
 
-    <!-- Help / Rules Modal -->
+    <!-- Mobile-Optimized Help / Rules Modal (Sticky Header & Footer) -->
     <div class="modal-backdrop" id="help-modal">
-      <div class="modal-card" style="text-align: left; max-height: 80vh; overflow-y: auto;">
-        <div class="modal-title" style="text-align: center;">Правила игры Mini Metro</div>
-        <div class="modal-subtitle" style="text-align: center;">Схема метрополитена в ваших руках</div>
+      <div class="modal-card modal-sheet">
+        <!-- Sticky Header with prominent close button -->
+        <div class="modal-sheet-header">
+          <div>
+            <div class="modal-title">Правила Mini Metro</div>
+            <div class="modal-subtitle">Схема метрополитена в ваших руках</div>
+          </div>
+          <button class="modal-close-icon" id="btn-close-help-x" title="Закрыть">✕</button>
+        </div>
 
-        <div style="font-size: 13px; line-height: 1.6; display: flex; flex-direction: column; gap: 12px; margin-bottom: 16px;">
-          <div style="background: rgba(43, 108, 176, 0.08); padding: 10px; border-radius: 8px;">
-            <strong>🎯 Главная цель:</strong> Перевозить пассажиров на станции их формы и не допускать переполнения станций!
+        <!-- Scrollable Body -->
+        <div class="modal-scroll-content">
+          <div style="background: rgba(43, 108, 176, 0.08); padding: 10px; border-radius: 8px; margin-bottom: 12px;">
+            <strong>🎯 Главная цель:</strong> Перевозить пассажиров на станции их формы и не допускать переполнения!
           </div>
 
           <p><strong>1. Фигуры станций:</strong> Станции бывают разными: <strong>○ Круг</strong>, <strong>△ Треугольник</strong>, <strong>□ Квадрат</strong>, а также редкие (☆ Звезда, ◇ Алмаз).</p>
 
-          <p><strong>2. Куда едут пассажиры:</strong> Рядом со станциями появляются пассажиры (маленькие фигурки). Форма пассажира показывает, на какую станцию он хочет приехать! (Например, пассажир-квадратик на станции-круге хочет доехать до станции-квадрата).</p>
+          <p><strong>2. Куда едут пассажиры:</strong> Форма пассажира (маленькая фигурка рядом со станцией) показывает, куда он хочет приехать! Пассажир-треугольник на станции-круге поедет только на треугольник. Доставка приносит <strong>+1 очко</strong>.</p>
 
           <p><strong>3. Как строить рельсы:</strong>
-            <br>• Зажмите пальцем станцию и протяните к другой станции — появится ветка и сразу поедет поезд.
-            <br>• Зажмите <strong>круглый маркер на конце ветки</strong> — потяните вперед, чтобы продлить ветку, или потяните назад на предыдущую станцию, чтобы <strong>сократить её</strong>.
+            <br>• Зажмите станцию и протяните к другой — появится ветка и поедет поезд.
+            <br>• Зажмите <strong>круглый маркер на конце ветки</strong> — потяните вперед, чтобы продлить ветку, или назад, чтобы <strong>сократить её</strong>.
             <br>• Зажмите <strong>середину рельсов</strong> и потяните на третью станцию, чтобы вставить её в маршрут.
             <br>• Соедините конец ветки с её началом, чтобы сделать <strong>кольцевую линию</strong>!
           </p>
 
-          <p><strong>4. Пересадки:</strong> Если две станции не соединены одной прямой линией, пассажиры сделают пересадку на узловой станции, где пересекаются ветки!</p>
+          <p><strong>4. Пересадки:</strong> Если станции не соединены прямой веткой, пассажиры сделают пересадку на узловой станции, где пересекаются две линии.</p>
 
-          <p><strong>5. ⚠️ Переполнение (Опасность!):</strong>
-            <br>На каждой станции помещается максимум <strong>6 пассажиров</strong>. Если людей становится больше 6, вокруг станции включается круговой таймер тревоги. Если вовремя не разгрузить её поездом — игра закончится!
-          </p>
+          <p><strong>5. ⚠️ Переполнение (Опасность!):</strong> На станции помещается до <strong>6 пассажиров</strong>. Если людей становится больше 6, включается круговой таймер. Если не разгрузить её — игра закончится!</p>
 
-          <p><strong>6. 🎁 Награды по воскресеньям:</strong>
-            <br>Каждое воскресенье в 23:59 игра дарит новый поезд и выбор бонуса: новая ветка, вагон, мосты через реки или узловой вокзал на 18 мест.
-          </p>
+          <p><strong>6. 🎁 Награды по воскресеньям:</strong> Каждое воскресенье в 23:59 игра дарит новый поезд и бонус: ветку, вагон, мосты или узловой вокзал.</p>
 
-          <p><strong>7. 📱 Управление на телефоне:</strong>
-            <br>Масштабируйте карту двумя пальцами (pinch-to-zoom) и двигайте карту одним пальцем по пустому месту.
-          </p>
+          <p><strong>7. 📱 Навигация:</strong> Двигайте карту одним пальцем и масштабируйте двумя пальцами (pinch-to-zoom).</p>
         </div>
 
-        <button class="btn-primary" id="btn-close-help">Всё понятно, играть!</button>
+        <!-- Sticky Footer: Always visible, impossible to miss! -->
+        <div class="modal-sheet-footer">
+          <button class="btn-primary" id="btn-close-help">Всё понятно, играть! 🚇</button>
+        </div>
       </div>
     </div>
   </div>

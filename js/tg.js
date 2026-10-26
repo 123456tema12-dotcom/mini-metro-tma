@@ -1,6 +1,7 @@
 /* ==========================================================================
    MINI METRO - Telegram Mini App (TMA) Bridge
-   Haptic feedback, theme synchronization, viewport expansion, score sharing
+   Haptic feedback, theme synchronization, viewport expansion,
+   and swipe-down-to-close protection
    ========================================================================== */
 
 export class TelegramBridge {
@@ -14,6 +15,16 @@ export class TelegramBridge {
       try {
         this.tg.ready();
         this.tg.expand();
+
+        // Disable native swipe down to close gesture (prevents window from closing when dragging finger!)
+        if (this.tg.disableVerticalSwipes) {
+          this.tg.disableVerticalSwipes();
+        }
+        if ('isVerticalSwipesEnabled' in this.tg) {
+          this.tg.isVerticalSwipesEnabled = false;
+        }
+
+        // Enable closing confirmation prompt so player doesn't accidentally exit
         if (this.tg.enableClosingConfirmation) {
           this.tg.enableClosingConfirmation();
         }
@@ -29,7 +40,7 @@ export class TelegramBridge {
 
   getThemeMode() {
     if (this.tg && this.tg.colorScheme) {
-      return this.tg.colorScheme; // 'light' or 'dark'
+      return this.tg.colorScheme;
     }
     return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
   }
@@ -42,7 +53,6 @@ export class TelegramBridge {
         return;
       } catch (_) {}
     }
-    // Web fallback for mobile browsers
     if (navigator.vibrate) {
       const ms = style === 'heavy' ? 24 : style === 'medium' ? 14 : 8;
       navigator.vibrate(ms);
@@ -64,7 +74,7 @@ export class TelegramBridge {
     }
   }
 
-  // Haptics: Selection changed (subtle tick)
+  // Haptics: Selection changed
   hapticSelection() {
     if (this.tg?.HapticFeedback) {
       try {
@@ -77,10 +87,10 @@ export class TelegramBridge {
     }
   }
 
-  // Share score via Telegram share dialog
+  // Share score
   shareScore(cityName, score, days) {
     const text = encodeURIComponent(
-      `🚇 I delivered ${score} passengers over ${days} days in Mini Metro (${cityName})! Can you beat my subway network?`
+      `🚇 Я перевёз ${score} пассажиров за ${days} дней в Mini Metro (${cityName})! Попробуй побить мой рекорд:`
     );
     const shareUrl = `https://t.me/share/url?url=${encodeURIComponent(window.location.href)}&text=${text}`;
     if (this.tg?.openTelegramLink) {

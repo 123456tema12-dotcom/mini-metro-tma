@@ -7,6 +7,7 @@
    - Close loops by dragging terminator back to start station
    - Insert intermediate stations by dragging middle-line kinks
    - Pinch-to-zoom & smooth pan
+   - Telegram swipe-down-to-close prevention
    ========================================================================== */
 
 import { Geometry } from './geometry.js';
@@ -48,6 +49,18 @@ export class InputManager {
     this.canvas.addEventListener('pointerup', e => this.handlePointerUp(e), { passive: false });
     this.canvas.addEventListener('pointercancel', e => this.handlePointerUp(e), { passive: false });
     this.canvas.addEventListener('wheel', e => this.handleWheel(e), { passive: false });
+
+    // Prevent Telegram / iOS swipe-down-to-close & pull-to-refresh on canvas
+    document.addEventListener('touchmove', (e) => {
+      if (e.target.closest('.modal-scroll-content, .city-select-grid')) {
+        return; // Allow scrolling inside modals
+      }
+      e.preventDefault();
+    }, { passive: false });
+
+    document.addEventListener('gesturestart', (e) => e.preventDefault());
+    document.addEventListener('gesturechange', (e) => e.preventDefault());
+    document.addEventListener('gestureend', (e) => e.preventDefault());
   }
 
   findStationNear(worldPos) {
@@ -285,21 +298,19 @@ export class InputManager {
       else if (this.mode === 'EXTEND_LINE') {
         const numSt = line.stations.length;
 
-        // Check for Retract: dragged backwards onto the previous station!
+        // Retract: dragged backwards onto previous station!
         if (this.isExtendingFromEnd && numSt >= 2 && target.id === line.stations[numSt - 2].id) {
-          // Remove last station
           line.stations.pop();
           line.isLoop = false;
           if (this.audio) this.audio.playLineConnect();
           if (this.tg) this.tg.hapticNotification('warning');
         } else if (!this.isExtendingFromEnd && numSt >= 2 && target.id === line.stations[1].id) {
-          // Remove first station
           line.stations.shift();
           line.isLoop = false;
           if (this.audio) this.audio.playLineConnect();
           if (this.tg) this.tg.hapticNotification('warning');
         }
-        // Check for closing loop: connected end to start station!
+        // Closing loop: connected end to start station!
         else if (numSt >= 3 && this.isExtendingFromEnd && target.id === line.stations[0].id) {
           const crossing = this.engine.doesSegmentCrossRiver(line.stations[numSt - 1], target);
           if (crossing && this.engine.getAvailableBridges() <= 0) {
@@ -311,7 +322,7 @@ export class InputManager {
           if (this.audio) this.audio.playLineConnect();
           if (this.tg) this.tg.hapticNotification('success');
         }
-        // Normal extend to new station
+        // Extend to target station
         else if (target.id !== this.dragStartStation.id && !line.isLoop) {
           const crossing = this.engine.doesSegmentCrossRiver(this.dragStartStation, target);
           if (crossing && this.engine.getAvailableBridges() <= 0) {

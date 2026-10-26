@@ -44,20 +44,11 @@ class App {
     this.cityGridEl = document.getElementById('city-grid');
     this.helpModal = document.getElementById('help-modal');
 
-    // Russian day names
     this.daysOfWeek = ['ПН', 'ВТ', 'СР', 'ЧТ', 'ПТ', 'СБ', 'ВС'];
 
     this.initGame();
     this.initUIControls();
     this.startLoop();
-
-    // Show rules modal on very first visit if never seen
-    if (!localStorage.getItem('metro_rules_viewed')) {
-      setTimeout(() => {
-        this.helpModal.classList.add('visible');
-        this.engine.isPaused = true;
-      }, 400);
-    }
   }
 
   initGame() {
@@ -140,18 +131,26 @@ class App {
       this.showCitySelectModal();
     });
 
-    // Help / Rules Modal
+    // Help / Rules Modal Controls (Sticky X and Button)
+    const closeHelp = () => {
+      this.helpModal.classList.remove('visible');
+      this.engine.isPaused = false;
+      this.tg.hapticSelection();
+    };
+
     document.getElementById('btn-help').addEventListener('click', () => {
       this.helpModal.classList.add('visible');
       this.engine.isPaused = true;
       this.tg.hapticSelection();
     });
 
-    document.getElementById('btn-close-help').addEventListener('click', () => {
-      this.helpModal.classList.remove('visible');
-      localStorage.setItem('metro_rules_viewed', 'true');
-      this.engine.isPaused = false;
-      this.tg.hapticSelection();
+    document.getElementById('btn-close-help').addEventListener('click', closeHelp);
+    const closeX = document.getElementById('btn-close-help-x');
+    if (closeX) closeX.addEventListener('click', closeHelp);
+
+    // Click outside backdrop to close
+    this.helpModal.addEventListener('click', (e) => {
+      if (e.target === this.helpModal) closeHelp();
     });
 
     // Game Over Restart & Share
@@ -213,13 +212,13 @@ class App {
       });
     }
 
-    // Instructions overlay auto-dismiss
+    // Instructions overlay auto-dismiss after 8 seconds
     const tipOverlay = document.getElementById('instructions-tip');
     if (tipOverlay) {
       setTimeout(() => {
         tipOverlay.style.opacity = '0';
         setTimeout(() => tipOverlay.remove(), 600);
-      }, 7000);
+      }, 8000);
     }
   }
 
